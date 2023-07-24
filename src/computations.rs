@@ -2,6 +2,7 @@
 
 pub mod computations {
     use libm::{atan2f, asinf};
+    use std::f32::consts::PI;
 
     pub fn quaternion2euler(qr:f32, qi:f32, qj:f32, qk:f32) -> (f32, f32, f32) {
         let sqr: f32 = qr*qr;
@@ -14,6 +15,14 @@ pub mod computations {
         let roll: f32 = atan2f(2.0 * (qj * qk + qi * qr), -sqi - sqj + sqk + sqr);
     
         return (yaw, pitch, roll);
+    }
+
+    pub fn rad2degrees(angle: f32) -> f32 {
+        angle * 180f32/PI
+    }
+
+    pub fn degrees2rad(angle: f32) -> f32 {
+        angle * PI/180f32
     }
 
 }
