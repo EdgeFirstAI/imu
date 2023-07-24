@@ -1,41 +1,25 @@
-mod computations;
-
-use computations::computations::quaternion2euler;
-use std::f64::consts::PI;
-use rand::Rng;
+use zmq::{Context, Socket};
 
 // Source can be found in: https://github.com/erickt/rust-zmq/blob/master/examples/zguide/helloworld_server/main.rs
 // IMU Application Server
-// Binds PUB socket to tcp://*:5556 
+// Binds PUB socket to tcp://*:5556
 // Publishes random yaw, pitch, roll values.
-#[derive(Debug)]
 pub struct Server {
-    pub endpoint: String
+    pub endpoint: String,
+    pub publisher: Socket
 }
 
 impl Server {
     pub fn new(endpoint: String) -> Self {
-        Self { endpoint }
+        let context = Context::new();
+        let publisher = context.socket(zmq::PUB).unwrap();
+        Self { 
+            endpoint,
+            publisher
+        }
     }
 
     pub fn start_server(&self) {
-        let context = zmq::Context::new();
-        let publisher = context.socket(zmq::PUB).unwrap();
-
-        assert!(publisher.bind(&self.endpoint).is_ok());
-        let mut rng = rand::thread_rng();
-
-        loop {
-            //let zipcode = rng.gen_range(0..100_000);
-            let yaw = rng.gen_range(-2.0*PI..2.0*PI);
-            let pitch = rng.gen_range(-2.0*PI..2.0*PI);
-            let roll = rng.gen_range(-2.0*PI..2.0*PI);
-
-            // this is slower than C because the current format! implementation is
-            // very, very slow. Several orders of magnitude slower than glibc's
-            // sprintf
-            let update = format!("{:.2} {:.2} {:.2}", yaw, pitch, roll);
-            publisher.send(&update, 0).unwrap();
-        }
+        assert!(self.publisher.bind(&self.endpoint).is_ok());
     }
 }
