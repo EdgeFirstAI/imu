@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 zmq = "0.9"
 rand = "0.8.5"
+structopt = "0.3"
+libm = "0.2.7"
