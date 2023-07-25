@@ -6,8 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zmq = "0.9"
-rand = "0.8.5"
+zmq = "0.10.0"
 structopt = "0.3"
 libm = "0.2.7"
 bno08x = {version = "^0.0.1", path = "/home/johns/bno08x-rs"}

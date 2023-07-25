@@ -1,15 +1,14 @@
 #![crate_name = "camerapose"]
+
 mod server;
 mod driver;
-
 mod computations;
 
-use bno08x::interface::delay::{TimerMs, DelayMs};
 use crate::driver::Driver;
-use computations::computations::quaternion2euler;
 use crate::server::Server;
+use computations::computations::{quaternion2euler, rad2degrees};
+use bno08x::interface::delay::{TimerMs, DelayMs};
 use structopt::StructOpt;
-
 use std::io::{self};
 
 #[derive(StructOpt, Debug)]
@@ -63,10 +62,14 @@ fn main() -> io::Result<()> {
     let opt = Opt::from_args();
 
     // Starting and initializing the server.
+    println!("[INFO] Starting server at endpoint: {}", opt.endpoint);
     let server = Server::new(opt.endpoint); 
     server.start_server();
 
     // Initializing the driver interface.
+    println!("[INFO] Initializing driver wrapper with parameters:");
+    println!("spidevice: {}\ngpiochip: {}\nhintn_pin: {}\nreset_pin: {}",
+            opt.spidevice, opt.gpiochip, opt.hintn_pin, opt.reset_pin);
     let mut delay_source = TimerMs {};
     let mut driver = Driver::new(
         &opt.spidevice,
@@ -77,24 +80,14 @@ fn main() -> io::Result<()> {
     driver.initialize_driver(&mut delay_source);
 
     // Starting the loop process. 
+    println!("[INFO] Reading IMU and pushing messages...");
     let loop_interval = 50 as u8;
-    println!("loop_interval: {}", loop_interval);
-
     loop {
-        let _msg_count = driver.imu_driver.handle_all_messages(&mut delay_source, 10u8);
+        let _msg_count = driver.imu_driver
+                            .handle_all_messages(&mut delay_source, 10u8);
         delay_source.delay_ms(loop_interval);
-        // println!("Current rotation: {:?}", imu_driver.rotation_quaternion());
         let [qr, qi, qj, qk] = driver.imu_driver.rotation_quaternion().unwrap();
-
-        let (yaw, pitch, roll) = quaternion2euler(qr, qi, qj, qk);
-        println!(
-            "Current rotation: {}, {}, {}", yaw, pitch, roll 
-        );
-
-        // this is slower than C because the current format! implementation is
-        // very, very slow. Several orders of magnitude slower than glibc's
-        // sprintf
-        let update = format!("{:.2} {:.2} {:.2}", yaw, pitch, roll);
-        server.publisher.send(&update, 0).unwrap();
+        let (yaw, pitch, roll) = rad2degrees(quaternion2euler(qr, qi, qj, qk));
+        server.send_message(yaw, pitch, roll);
     }
 }
