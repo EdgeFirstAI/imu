@@ -68,7 +68,7 @@ fn main() -> io::Result<()> {
 
     // Initializing the driver interface.
     println!("[INFO] Initializing driver wrapper with parameters:");
-    println!("spidevice: {}\ngpiochip: {}\nhintn_pin: {}\nreset_pin: {}",
+    println!("* spidevice: {}\n* gpiochip: {}\n* hintn_pin: {}\n* reset_pin: {}",
             opt.spidevice, opt.gpiochip, opt.hintn_pin, opt.reset_pin);
     let mut delay_source = TimerMs {};
     let mut driver = Driver::new(

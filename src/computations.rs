@@ -6,7 +6,6 @@
 //! conversions (radians to degrees).  
 
 pub mod computations {
-    use libm::{asinf, atan2f};
     use std::f32::consts::PI;
     const RAD_TO_DEG: f32 = 180f32 / PI;
 
@@ -19,18 +18,9 @@ pub mod computations {
         let sqj: f32 = qj * qj;
         let sqk: f32 = qk * qk;
 
-        let yaw: f32 = atan2f(
-            2.0 * (qi * qj + qk * qr), 
-            sqi - sqj - sqk + sqr
-        );
-        let pitch: f32 = asinf(
-            -2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr)
-        );
-        let roll: f32 = atan2f(
-            2.0 * (qj * qk + qi * qr), 
-            -sqi - sqj + sqk + sqr
-        );
-
+        let yaw: f32 = (2.0 * (qi * qj + qk * qr)).atan2( sqi - sqj - sqk + sqr);
+        let pitch: f32 = (-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr)).asin();
+        let roll: f32 = (2.0 * (qj * qk + qi * qr)).atan2(-sqi - sqj + sqk + sqr); 
         return (yaw, pitch, roll);
     }
     /// Converts radians to degrees for euler angles. 
