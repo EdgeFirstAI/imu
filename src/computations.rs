@@ -24,7 +24,7 @@ pub mod computations {
         return (yaw, pitch, roll);
     }
     /// Converts radians to degrees for euler angles. 
-    pub fn rad2degrees(angles: (f32, f32, f32)) -> (f32, f32, f32) {
-        (angles.0*RAD_TO_DEG, angles.1*RAD_TO_DEG, angles.2*RAD_TO_DEG)
+    pub fn rad2degrees(angles: (f32, f32, f32)) -> [f32; 3] {
+        [angles.0*RAD_TO_DEG, angles.1*RAD_TO_DEG, angles.2*RAD_TO_DEG]
     }
 }

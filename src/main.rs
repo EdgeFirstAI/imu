@@ -81,13 +81,17 @@ fn main() -> io::Result<()> {
 
     // Starting the loop process. 
     println!("[INFO] Reading IMU and pushing messages...");
-    let loop_interval = 50 as u8;
+    let loop_interval = 50;
     loop {
-        let _msg_count = driver.imu_driver
-                            .handle_all_messages(&mut delay_source, 10u8);
+        let _msg_count = driver
+                            .imu_driver
+                            .handle_messages(&mut delay_source, 10, 10);
         delay_source.delay_ms(loop_interval);
-        let [qr, qi, qj, qk] = driver.imu_driver.rotation_quaternion().unwrap();
-        let (yaw, pitch, roll) = rad2degrees(quaternion2euler(qr, qi, qj, qk));
-        server.send_message(yaw, pitch, roll);
+        let [qi, qj, qk, qr] = driver.imu_driver.rotation_quaternion().unwrap();
+        let attitude = rad2degrees(quaternion2euler(qr, qi, qj, qk));
+        let accelerometer = driver.imu_driver.accelerometer().unwrap();
+        let gyroscope = driver.imu_driver.gyro().unwrap();
+        let magnetometer = driver.imu_driver.mag_field().unwrap();
+        server.send_message(attitude, accelerometer, gyroscope, magnetometer);
     }
 }

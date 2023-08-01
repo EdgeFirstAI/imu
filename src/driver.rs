@@ -1,10 +1,18 @@
 //! Provides IMU driver initializations. 
 
-use bno08x::interface::{SpiInterface, 
-                        spidev::SpiDevice, 
-                        delay::DelayMs, 
-                        gpio::{GpiodIn, GpiodOut}};
-use bno08x::wrapper::BNO08x;
+use bno08x::interface::{
+    SpiInterface, 
+    spidev::SpiDevice, 
+    delay::DelayMs, 
+    gpio::{GpiodIn, GpiodOut}
+};
+use bno08x::wrapper::{
+    BNO08x, 
+    SENSOR_REPORTID_ROTATION_VECTOR, 
+    SENSOR_REPORTID_ACCELEROMETER, 
+    SENSOR_REPORTID_GYROSCOPE,
+    SENSOR_REPORTID_MAGNETIC_FIELD,
+};
 
 pub struct Driver {
     pub imu_driver: BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>
@@ -33,6 +41,29 @@ impl Driver {
     /// Settings to set for the driver that was initialized. 
     pub fn initialize_driver(&mut self, delay_source: &mut impl DelayMs) {
         self.imu_driver.init(delay_source).unwrap();
-        self.imu_driver.enable_rotation_vector(50).unwrap();
+        self.imu_driver
+            .enable_report(
+                delay_source, 
+                SENSOR_REPORTID_ROTATION_VECTOR, 
+                110)
+            .unwrap();
+        self.imu_driver
+            .enable_report(
+                delay_source, 
+                SENSOR_REPORTID_ACCELEROMETER, 
+                110)
+            .unwrap();
+        self.imu_driver
+            .enable_report(
+                delay_source, 
+                SENSOR_REPORTID_GYROSCOPE, 
+                110)
+            .unwrap();
+        self.imu_driver
+            .enable_report(
+                delay_source, 
+                SENSOR_REPORTID_MAGNETIC_FIELD, 
+                110)
+            .unwrap();
     }
 }
