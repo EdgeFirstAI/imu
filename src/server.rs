@@ -32,7 +32,8 @@ impl Server {
         attitude: [f32; 3], 
         accelerometer: [f32; 3],
         gyroscope: [f32; 3],
-        magnetometer: [f32; 3]
+        magnetometer: [f32; 3],
+        rot_acc: f32
     ) {
         // this is slower than C because the current format! implementation is
         // very, very slow. Several orders of magnitude slower than glibc's
@@ -43,8 +44,8 @@ impl Server {
         let [mx, my, mz] = magnetometer;
 
         let attitude_message = format!(
-            "Attitude [degrees]: yaw={:.2}, pitch={:.2}, roll={:.2}",
-            yaw, pitch, roll
+            "Attitude [degrees]: yaw={:.2}, pitch={:.2}, roll={:.2}, accuracy={:.2}",
+            yaw, pitch, roll, rot_acc
         );
 
         let accelerometer_message = format!(

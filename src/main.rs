@@ -11,6 +11,10 @@ use bno08x::interface::delay::{TimerMs, DelayMs};
 use structopt::StructOpt;
 use std::io::{self};
 
+use chrono::offset::Utc;
+use chrono::DateTime;
+use std::time::SystemTime;
+
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "IMU Application",
@@ -79,7 +83,11 @@ fn main() -> io::Result<()> {
     ); 
     driver.initialize_driver(&mut delay_source);
 
-    // Starting the loop process. 
+    // Starting the loop process.
+    let system_time = SystemTime::now();
+    let datetime: DateTime<Utc> = system_time.into();
+    println!("{}", datetime.format("%d/%m/%Y %T"));
+
     println!("[INFO] Reading IMU and pushing messages...");
     let loop_interval = 50;
     loop {
@@ -92,6 +100,11 @@ fn main() -> io::Result<()> {
         let accelerometer = driver.imu_driver.accelerometer().unwrap();
         let gyroscope = driver.imu_driver.gyro().unwrap();
         let magnetometer = driver.imu_driver.mag_field().unwrap();
-        server.send_message(attitude, accelerometer, gyroscope, magnetometer);
+        let rot_acc: f32 = driver.imu_driver.rotation_acc();
+        server.send_message(attitude, accelerometer, gyroscope, magnetometer, rot_acc);
+        
+        let system_time = SystemTime::now();
+        let datetime: DateTime<Utc> = system_time.into();
+        print!("\r{}", datetime.format("%d/%m/%Y %T"));
     }
 }
