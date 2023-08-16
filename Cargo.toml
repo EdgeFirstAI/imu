@@ -13,5 +13,5 @@ lto = true
 [dependencies]
 zmq = "0.10.0"
 structopt = "0.3"
-bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs" }
+bno08x = { path = "../bno08x-rs" }
 chrono="0.4.26"
