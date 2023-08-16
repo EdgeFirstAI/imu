@@ -48,7 +48,7 @@ impl Driver {
             if !self.imu_driver.is_report_enabled(r) {
                 panic!("Could not enable report {}", r);
             }
-            
+
             delay_ms(1000);
         }
     }
@@ -72,9 +72,10 @@ impl Driver {
         let mut success = false;
         i = 0;
         while i < max_tries && !success {
+            // The driver will normalize the quaternion so we don't need to normalize it ourselves
             match self
                 .imu_driver
-                .set_sensor_orientation(0.5, 0.5, 0.5, -0.5, 2000)
+                .set_sensor_orientation(-1.0, 0.0, 0.0, 1.0, 2000)
             {
                 Ok(v) => success = v,
                 Err(_) => success = false,
