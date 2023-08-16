@@ -1,12 +1,15 @@
 [package]
 name = "camerapose"
+description = "Maivin camera pose measurement and publishing service"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+opt-level = 3
+lto = true
 
 [dependencies]
 zmq = "0.10.0"
 structopt = "0.3"
-bno08x = {version = "^0.0.1", path = "../bno08x-rs"}
+bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs" }
 chrono="0.4.26"
