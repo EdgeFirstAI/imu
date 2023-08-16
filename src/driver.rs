@@ -1,69 +1,86 @@
-//! Provides IMU driver initializations. 
+//! Provides IMU driver initializations.
 
 use bno08x::interface::{
-    SpiInterface, 
-    spidev::SpiDevice, 
-    delay::DelayMs, 
-    gpio::{GpiodIn, GpiodOut}
+    delay::delay_ms,
+    gpio::{GpiodIn, GpiodOut},
+    spidev::SpiDevice,
+    SpiInterface,
 };
 use bno08x::wrapper::{
-    BNO08x, 
-    SENSOR_REPORTID_ROTATION_VECTOR, 
-    SENSOR_REPORTID_ACCELEROMETER, 
-    SENSOR_REPORTID_GYROSCOPE,
-    SENSOR_REPORTID_MAGNETIC_FIELD,
+    BNO08x, SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE,
+    SENSOR_REPORTID_MAGNETIC_FIELD, SENSOR_REPORTID_ROTATION_VECTOR,
 };
 
 pub struct Driver {
-    pub imu_driver: BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>
+    pub imu_driver: BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
 impl Driver {
-    /// Creates a Driver struct object initializing the driver wrapper 
+    /// Creates a Driver struct object initializing the driver wrapper
     /// with the path to the spidevice, gpiochip resources, and the  
-    /// pins set for spi communications. 
-    pub fn new(
-        spidevice: &str, 
-        gpiochip: &str, 
-        hintn_pin: u32, 
-        reset_pin: u32) -> Self {
-        
-        let imu_driver = match BNO08x::new_bno08x(
-                spidevice, gpiochip, hintn_pin, reset_pin) {
+    /// pins set for spi communications.
+    pub fn new(spidevice: &str, hintn_pin: &str, reset_pin: &str) -> Self {
+        let imu_driver = match BNO08x::new_bno08x_from_symbol(spidevice, hintn_pin, reset_pin) {
             Ok(imu_driver) => imu_driver,
             Err(_) => panic!("Initializing IMU driver failed!"),
-        };        
-        Self { 
-            imu_driver
+        };
+        Self { imu_driver }
+    }
+
+    /// Settings to set for the driver that was initialized.
+    pub fn enable_reports(&mut self) {
+        let reports = [
+            (SENSOR_REPORTID_ROTATION_VECTOR, 100),
+            (SENSOR_REPORTID_ACCELEROMETER, 300),
+            (SENSOR_REPORTID_GYROSCOPE, 300),
+            (SENSOR_REPORTID_MAGNETIC_FIELD, 300),
+        ];
+
+        let max_tries = 5;
+
+        for (r, t) in reports {
+            let mut i = 0;
+            while i < max_tries && !self.imu_driver.is_report_enabled(r) {
+                let _ = self.imu_driver.enable_report(r, t);
+                i += 1;
+            }
+
+            if !self.imu_driver.is_report_enabled(r) {
+                panic!("Could not enable report {}", r);
+            }
+            println!("Report {} is enabled", r);
+            delay_ms(1000);
         }
     }
 
-    /// Settings to set for the driver that was initialized. 
-    pub fn initialize_driver(&mut self, delay_source: &mut impl DelayMs) {
-        self.imu_driver.init(delay_source).unwrap();
-        self.imu_driver
-            .enable_report(
-                delay_source, 
-                SENSOR_REPORTID_ROTATION_VECTOR, 
-                110)
-            .unwrap();
-        self.imu_driver
-            .enable_report(
-                delay_source, 
-                SENSOR_REPORTID_ACCELEROMETER, 
-                110)
-            .unwrap();
-        self.imu_driver
-            .enable_report(
-                delay_source, 
-                SENSOR_REPORTID_GYROSCOPE, 
-                110)
-            .unwrap();
-        self.imu_driver
-            .enable_report(
-                delay_source, 
-                SENSOR_REPORTID_MAGNETIC_FIELD, 
-                110)
-            .unwrap();
+    pub fn configure_frs(&mut self) -> bool {
+        // Need to enable a report so that the IMU reports back to the program.
+        // Writes don't seem to work if the IMU doesn't also have anything send
+        let max_tries = 5;
+
+        let report_id = SENSOR_REPORTID_ACCELEROMETER;
+        let mut i = 0;
+        while i < max_tries && !self.imu_driver.is_report_enabled(report_id) {
+            let _ = self.imu_driver.enable_report(report_id, 100);
+            i += 1;
+        }
+        if !self.imu_driver.is_report_enabled(report_id) {
+            panic!("Could not enable report {}", report_id);
+        }
+        delay_ms(1000);
+
+        let mut success = false;
+        i = 0;
+        while i < max_tries && !success {
+            match self
+                .imu_driver
+                .set_sensor_orientation(0.5, 0.5, 0.5, -0.5, 2000)
+            {
+                Ok(v) => success = v,
+                Err(_) => success = false,
+            };
+        }
+
+        return success;
     }
 }
