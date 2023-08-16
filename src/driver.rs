@@ -48,7 +48,7 @@ impl Driver {
             if !self.imu_driver.is_report_enabled(r) {
                 panic!("Could not enable report {}", r);
             }
-            println!("Report {} is enabled", r);
+            
             delay_ms(1000);
         }
     }

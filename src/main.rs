@@ -6,6 +6,7 @@ mod server;
 
 use crate::driver::Driver;
 use crate::server::Server;
+
 use bno08x::interface::delay::delay_ms;
 use computations::computations::{quaternion2euler, rad2degrees};
 use std::io::{self};
@@ -59,24 +60,32 @@ struct Opt {
         help = "Apply ADIS2 FRS configuration"
     )]
     configure: bool,
-}
 
+    #[structopt(long = "verbose", help = "Enables verbose output")]
+    verbose: bool,
+}
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
 
+    macro_rules! log {
+        ($( $args:expr ),*) => { if opt.verbose {println!( $( $args ),* );} }
+    }
+
     // Initializing the driver interface.
-    println!("[INFO] Initializing driver wrapper with parameters:");
-    println!(
+    log!("[INFO] Initializing driver wrapper with parameters:");
+    log!(
         "* spidevice: {}\n* hintn_pin: {}\n* reset_pin: {}",
-        opt.spidevice, opt.hintn_pin, opt.reset_pin
+        opt.spidevice,
+        opt.hintn_pin,
+        opt.reset_pin
     );
     let mut driver = Driver::new(&opt.spidevice, &opt.hintn_pin, &opt.reset_pin);
     driver.imu_driver.init().unwrap();
     if opt.configure {
         if driver.configure_frs() {
-            println!("FRS records updated");
+            log!("FRS records updated");
         } else {
-            println!("ERROR: FRS records not updated");
+            log!("ERROR: FRS records not updated");
         }
         return Ok(());
     }
@@ -90,7 +99,7 @@ fn main() -> io::Result<()> {
     // Starting the loop process.
     let system_time = SystemTime::now();
     let datetime: DateTime<Utc> = system_time.into();
-    println!("{}", datetime.format("%d/%m/%Y %T"));
+    log!("{}", datetime.format("%d/%m/%Y %T"));
 
     println!("[INFO] Reading IMU and pushing messages...");
     let loop_interval = 50;
@@ -107,6 +116,6 @@ fn main() -> io::Result<()> {
 
         let system_time = SystemTime::now();
         let datetime: DateTime<Utc> = system_time.into();
-        print!("\r{}", datetime.format("%d/%m/%Y %T"));
+        log!("\r{}", datetime.format("%d/%m/%Y %T"));
     }
 }
