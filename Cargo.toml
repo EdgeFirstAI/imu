@@ -1,7 +1,9 @@
 [package]
 name = "camerapose"
 description = "Maivin camera pose measurement and publishing service"
-version = "0.1.0"
+repository = "https://bitbucket.org/au-zone/camerapose"
+license = "CLOSED"
+version = "0.2.0"
 edition = "2021"
 
 [profile.release]
