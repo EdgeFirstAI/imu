@@ -107,15 +107,18 @@ fn main() -> io::Result<()> {
         let _msg_count = driver.imu_driver.handle_messages(10, 10);
         delay_ms(loop_interval);
         let [qi, qj, qk, qr] = driver.imu_driver.rotation_quaternion().unwrap();
-        let attitude = rad2degrees(quaternion2euler(qr, qi, qj, qk));
+        let attitude = quaternion2euler(qr, qi, qj, qk).map(rad2degrees);
         let accelerometer = driver.imu_driver.accelerometer().unwrap();
         let gyroscope = driver.imu_driver.gyro().unwrap();
         let magnetometer = driver.imu_driver.mag_field().unwrap();
-        let rot_acc: f32 = driver.imu_driver.rotation_acc();
-        server.send_message(attitude, accelerometer, gyroscope, magnetometer, rot_acc);
-
+        let rot_acc = rad2degrees(driver.imu_driver.rotation_acc());
+        let msg = server.send_message(attitude, accelerometer, gyroscope, magnetometer, rot_acc);
         let system_time = SystemTime::now();
         let datetime: DateTime<Utc> = system_time.into();
-        log!("\r{}", datetime.format("%d/%m/%Y %T"));
+        log!(
+            "Message sent at {}:\n{}",
+            datetime.format("%d/%m/%Y %T"),
+            msg
+        );
     }
 }

@@ -1,40 +1,36 @@
 //! Crate to establish server intializations.
 //! Source was found in https://github.com/erickt/rust-zmq/blob/master/examples/zguide/weather_server/main.rs
-//! Publishes yaw, pitch, roll values gathered from 
+//! Publishes yaw, pitch, roll values gathered from
 //! the IMU to the dedicated endpoint set.
 use zmq::{Context, Socket};
 
 pub struct Server {
     pub endpoint: String,
-    pub socket: Socket
+    pub socket: Socket,
 }
 
 impl Server {
-
     /// Creates a new struct object intializing the Socket.
     pub fn new(endpoint: String) -> Self {
         let context = Context::new();
         let socket = context.socket(zmq::PUB).unwrap();
-        Self { 
-            endpoint,
-            socket
-        }
+        Self { endpoint, socket }
     }
 
-    /// Binds the socket with the dedicated endpoint set. 
+    /// Binds the socket with the dedicated endpoint set.
     pub fn start_server(&self) {
         assert!(self.socket.bind(&self.endpoint).is_ok());
     }
 
     /// Sends the yaw, pitch, and roll values captured by the IMU.
     pub fn send_message(
-        &self, 
-        attitude: [f32; 3], 
+        &self,
+        attitude: [f32; 3],
         accelerometer: [f32; 3],
         gyroscope: [f32; 3],
         magnetometer: [f32; 3],
-        rot_acc: f32
-    ) {
+        rot_acc: f32,
+    ) -> String {
         // this is slower than C because the current format! implementation is
         // very, very slow. Several orders of magnitude slower than glibc's
         // sprintf
@@ -65,11 +61,9 @@ impl Server {
 
         let update = format!(
             "{}\n{}\n{}\n{}\n",
-            attitude_message, 
-            accelerometer_message, 
-            gyroscope_message, 
-            magnetometer_message
+            attitude_message, accelerometer_message, gyroscope_message, magnetometer_message
         );
         self.socket.send(&update, 0).unwrap();
+        return update;
     }
 }
