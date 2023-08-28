@@ -30,6 +30,7 @@ impl Server {
         gyroscope: [f32; 3],
         magnetometer: [f32; 3],
         rot_acc: f32,
+        rotation_update_time: u128,
     ) -> String {
         // this is slower than C because the current format! implementation is
         // very, very slow. Several orders of magnitude slower than glibc's
@@ -59,9 +60,14 @@ impl Server {
             mx, my, mz
         );
 
+        let timestamp_message = format!("timestamp [ns]: {}", rotation_update_time);
         let update = format!(
-            "{}\n{}\n{}\n{}\n",
-            attitude_message, accelerometer_message, gyroscope_message, magnetometer_message
+            "{}\n{}\n{}\n{}\n{}\n",
+            attitude_message,
+            accelerometer_message,
+            gyroscope_message,
+            magnetometer_message,
+            timestamp_message
         );
         self.socket.send(&update, 0).unwrap();
         return update;
