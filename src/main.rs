@@ -4,17 +4,14 @@ mod computations;
 mod driver;
 mod server;
 
-use crate::driver::Driver;
-use crate::server::Server;
+use crate::{driver::Driver, server::Server};
 
-use bno08x::interface::delay::delay_ms;
-use bno08x::wrapper::SENSOR_REPORTID_ROTATION_VECTOR;
+use bno08x::{interface::delay::delay_ms, wrapper::SENSOR_REPORTID_ROTATION_VECTOR};
 use computations::computations::{quaternion2euler, rad2degrees};
 use std::io::{self};
 use structopt::StructOpt;
 
-use chrono::offset::Utc;
-use chrono::DateTime;
+use chrono::{offset::Utc, DateTime};
 use std::time::SystemTime;
 
 #[derive(StructOpt, Debug)]

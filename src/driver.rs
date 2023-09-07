@@ -1,14 +1,16 @@
 //! Provides IMU driver initializations.
 
-use bno08x::interface::{
-    delay::delay_ms,
-    gpio::{GpiodIn, GpiodOut},
-    spidev::SpiDevice,
-    SpiInterface,
-};
-use bno08x::wrapper::{
-    BNO08x, SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE,
-    SENSOR_REPORTID_MAGNETIC_FIELD, SENSOR_REPORTID_ROTATION_VECTOR,
+use bno08x::{
+    interface::{
+        delay::delay_ms,
+        gpio::{GpiodIn, GpiodOut},
+        spidev::SpiDevice,
+        SpiInterface,
+    },
+    wrapper::{
+        BNO08x, SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE,
+        SENSOR_REPORTID_MAGNETIC_FIELD, SENSOR_REPORTID_ROTATION_VECTOR,
+    },
 };
 
 pub struct Driver {
@@ -72,7 +74,8 @@ impl Driver {
         let mut success = false;
         i = 0;
         while i < max_tries && !success {
-            // The driver will normalize the quaternion so we don't need to normalize it ourselves
+            // The driver will normalize the quaternion so we don't need to normalize it
+            // ourselves
             match self
                 .imu_driver
                 .set_sensor_orientation(-1.0, 0.0, 0.0, 1.0, 2000)
