@@ -100,11 +100,10 @@ fn main() -> io::Result<()> {
     log!("{}", datetime.format("%d/%m/%Y %T"));
 
     println!("[INFO] Reading IMU and pushing messages...");
-    let loop_interval = 50;
+    let loop_interval = 5;
     let mut last_rotation_update_time: u128 = 0;
     loop {
-        let _msg_count = driver.imu_driver.handle_messages(10, 10);
-        delay_ms(loop_interval);
+        let _msg_count = driver.imu_driver.handle_messages(5, 10);
         let [qi, qj, qk, qr] = driver.imu_driver.rotation_quaternion().unwrap();
         let rotation_update_time = driver
             .imu_driver
@@ -133,5 +132,6 @@ fn main() -> io::Result<()> {
             );
             last_rotation_update_time = rotation_update_time;
         }
+        delay_ms(loop_interval);
     }
 }
