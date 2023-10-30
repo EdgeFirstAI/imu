@@ -6,7 +6,15 @@ mod server;
 
 use crate::{driver::Driver, server::Server};
 
-use bno08x::{interface::delay::delay_ms, wrapper::SENSOR_REPORTID_ROTATION_VECTOR};
+use bno08x::{
+    interface::{
+        delay::delay_ms,
+        gpio::{GpiodIn, GpiodOut},
+        spidev::SpiDevice,
+        SpiInterface,
+    },
+    wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
+};
 use computations::computations::{quaternion2euler, rad2degrees};
 use std::io::{self};
 use structopt::StructOpt;
@@ -92,7 +100,40 @@ fn main() -> io::Result<()> {
     let server = Server::new(opt.endpoint);
     server.start_server();
 
+    let report_update_cb = move |imu_driver: &BNO08x<
+        SpiInterface<SpiDevice, GpiodIn, GpiodOut>,
+    >| {
+        let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
+        let rotation_update_time = imu_driver.report_update_time(SENSOR_REPORTID_ROTATION_VECTOR);
+        let attitude = quaternion2euler(qr, qi, qj, qk).map(rad2degrees);
+        let accelerometer = imu_driver.accelerometer().unwrap();
+        let gyroscope = imu_driver.gyro().unwrap();
+        let magnetometer = imu_driver.mag_field().unwrap();
+        let rot_acc = rad2degrees(imu_driver.rotation_acc());
+        let msg = server.send_message(
+            attitude,
+            accelerometer,
+            gyroscope,
+            magnetometer,
+            rot_acc,
+            rotation_update_time,
+        );
+        let system_time = SystemTime::now();
+        let datetime: DateTime<Utc> = system_time.into();
+        log!(
+            "Message sent at {}:\n{}",
+            datetime.format("%d/%m/%Y %T"),
+            msg
+        );
+    };
+
     driver.enable_reports();
+
+    driver.imu_driver.add_sensor_report_callback(
+        SENSOR_REPORTID_ROTATION_VECTOR,
+        String::from("report_update_cb"),
+        report_update_cb,
+    );
 
     // Starting the loop process.
     let system_time = SystemTime::now();
@@ -101,37 +142,9 @@ fn main() -> io::Result<()> {
 
     println!("[INFO] Reading IMU and pushing messages...");
     let loop_interval = 5;
-    let mut last_rotation_update_time: u128 = 0;
+
     loop {
         let _msg_count = driver.imu_driver.handle_messages(5, 10);
-        let [qi, qj, qk, qr] = driver.imu_driver.rotation_quaternion().unwrap();
-        let rotation_update_time = driver
-            .imu_driver
-            .report_update_time(SENSOR_REPORTID_ROTATION_VECTOR);
-        let attitude = quaternion2euler(qr, qi, qj, qk).map(rad2degrees);
-        let accelerometer = driver.imu_driver.accelerometer().unwrap();
-        let gyroscope = driver.imu_driver.gyro().unwrap();
-        let magnetometer = driver.imu_driver.mag_field().unwrap();
-        let rot_acc = rad2degrees(driver.imu_driver.rotation_acc());
-
-        if rotation_update_time != last_rotation_update_time {
-            let msg = server.send_message(
-                attitude,
-                accelerometer,
-                gyroscope,
-                magnetometer,
-                rot_acc,
-                rotation_update_time,
-            );
-            let system_time = SystemTime::now();
-            let datetime: DateTime<Utc> = system_time.into();
-            log!(
-                "Message sent at {}:\n{}",
-                datetime.format("%d/%m/%Y %T"),
-                msg
-            );
-            last_rotation_update_time = rotation_update_time;
-        }
         delay_ms(loop_interval);
     }
 }
