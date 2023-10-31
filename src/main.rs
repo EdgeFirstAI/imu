@@ -112,11 +112,11 @@ async fn main() -> io::Result<()> {
                 let imu = messages::imu_message(
                     header, 
                     orientation, 
-                    [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+                    [-1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
                     angular_velocity,
-                    [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+                    [-1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
                     linear_acceleration,
-                    [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+                    [-1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
                 );
 
                 let encoded = cdr::serialize::<_, _, CdrLe>(&imu, Infinite).unwrap();
