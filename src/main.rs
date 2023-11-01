@@ -88,7 +88,7 @@ async fn main() -> io::Result<()> {
         let publisher = session.declare_publisher(&args.topic).res().await.unwrap();
         let mut last_rotation_update_time: u128 = 0;
 
-        for idx in 0..u32::MAX {
+        for _idx in 0..u32::MAX {
 
             let _msg_count = driver.imu_driver.handle_messages(10, 10);
             sleep(Duration::from_millis(50)).await;
@@ -101,7 +101,7 @@ async fn main() -> io::Result<()> {
             let [ang_ax, ang_ay, ang_az] = driver.imu_driver.gyro().unwrap();
             
             if rotation_update_time != last_rotation_update_time {
-                let frame = format!("frame {}", idx);
+                let frame = String::from("ImuMap");
                 println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
                 
                 // Build the IMU message type.
