@@ -101,7 +101,7 @@ fn main() -> io::Result<()> {
             let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
             let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
 
-            
+            log!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
             // Build the IMU message type.
             let header = messages::header(&frame);
             let orientation = messages::orientation(qi as f64, qj as f64, qk as f64, qr as f64);
