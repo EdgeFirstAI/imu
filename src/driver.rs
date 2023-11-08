@@ -8,18 +8,16 @@ use bno08x::{
         SpiInterface,
     },
     wrapper::{
-        BNO08x, 
-        SENSOR_REPORTID_ACCELEROMETER, 
+        BNO08x, SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE,
         SENSOR_REPORTID_ROTATION_VECTOR,
-        SENSOR_REPORTID_GYROSCOPE,
     },
 };
 
-pub struct Driver {
-    pub imu_driver: BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
+pub struct Driver<'a> {
+    pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
-impl Driver {
+impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
     /// with the path to the spidevice, gpiochip resources, and the  
     /// pins set for spi communications.
