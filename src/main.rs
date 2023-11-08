@@ -2,8 +2,6 @@ use cdr::{CdrLe, Infinite};
 use clap::Parser;
 use std::io::{self};
 use zenoh::{prelude::sync::*, publication::CongestionControl};
-use zenoh_ros_type::common_interfaces::sensor_msgs::IMU;
-
 mod connection;
 mod driver;
 mod messages;
@@ -66,90 +64,73 @@ fn main() -> io::Result<()> {
     let session = connection::start_session(&args.mode, &args.endpoint).unwrap();
 
     // Publish messages.
-    if args.publisher {
-        macro_rules! log {
-            ($( $args:expr ),*) => { if args.verbose {println!( $( $args ),* );} }
-        }
+    macro_rules! log {
+        ($( $args:expr ),*) => { if args.verbose {println!( $( $args ),* );} }
+    }
 
-        // Initializing the driver interface.
-        log!("[INFO] Initializing driver wrapper with parameters:");
-        log!(
-            "* spidevice: {}\n* hintn_pin: {}\n* reset_pin: {}",
-            args.spidevice,
-            args.hintn_pin,
-            args.reset_pin
-        );
+    // Initializing the driver interface.
+    log!("[INFO] Initializing driver wrapper with parameters:");
+    log!(
+        "* spidevice: {}\n* hintn_pin: {}\n* reset_pin: {}",
+        args.spidevice,
+        args.hintn_pin,
+        args.reset_pin
+    );
 
-        let mut driver = driver::Driver::new(&args.spidevice, &args.hintn_pin, &args.reset_pin);
-        driver.imu_driver.init().unwrap();
-        if args.configure {
-            if driver.configure_frs() {
-                log!("FRS records updated");
-            } else {
-                log!("ERROR: FRS records not updated");
-            }
-            return Ok(());
-        }
-        let publisher = session
-            .declare_publisher(args.topic.clone())
-            .congestion_control(CongestionControl::Block)
-            .res()
-            .unwrap();
-        let report_update_cb =
-            move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
-                let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
-                let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
-                let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
-
-                let frame = String::from("ImuMap");
-                println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
-                // Build the IMU message type.
-                let header = messages::header(&frame);
-                let orientation = messages::orientation(qi as f64, qj as f64, qk as f64, qr as f64);
-                let linear_acceleration =
-                    messages::linear_acceleration(lin_ax as f64, lin_ay as f64, lin_az as f64);
-                let angular_velocity =
-                    messages::angular_velocity(ang_ax as f64, ang_ay as f64, ang_az as f64);
-                let imu = messages::imu_message(
-                    header,
-                    orientation,
-                    [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    angular_velocity,
-                    [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    linear_acceleration,
-                    [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                );
-
-                let encoded = cdr::serialize::<_, _, CdrLe>(&imu, Infinite).unwrap();
-                publisher.put(encoded).res().unwrap();
-            };
-
-        driver.enable_reports();
-
-        driver.imu_driver.add_sensor_report_callback(
-            SENSOR_REPORTID_ROTATION_VECTOR,
-            String::from("report_update_cb"),
-            report_update_cb,
-        );
-
-        loop {
-            let _msg_count = driver.imu_driver.handle_messages(5, 10);
-            delay_ms(5);
-        }
-    } else {
-        let subscriber = session.declare_subscriber(&args.topic).res().unwrap();
-        while let Ok(sample) = subscriber.recv() {
-            let decoded =
-                cdr::deserialize_from::<_, IMU, _>(sample.value.payload.reader(), Infinite)
-                    .unwrap();
-            println!(
-                "Orientation {}, {}, {}, {}",
-                decoded.orientation.x,
-                decoded.orientation.y,
-                decoded.orientation.z,
-                decoded.orientation.w
-            );
+    let mut driver = driver::Driver::new(&args.spidevice, &args.hintn_pin, &args.reset_pin);
+    driver.imu_driver.init().unwrap();
+    if args.configure {
+        if driver.configure_frs() {
+            log!("FRS records updated");
+        } else {
+            log!("ERROR: FRS records not updated");
         }
         return Ok(());
+    }
+    let publisher = session
+        .declare_publisher(args.topic.clone())
+        .congestion_control(CongestionControl::Block)
+        .res()
+        .unwrap();
+    let report_update_cb =
+        move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
+            let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
+            let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
+            let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
+
+            let frame = String::from("ImuMap");
+            println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
+            // Build the IMU message type.
+            let header = messages::header(&frame);
+            let orientation = messages::orientation(qi as f64, qj as f64, qk as f64, qr as f64);
+            let linear_acceleration =
+                messages::linear_acceleration(lin_ax as f64, lin_ay as f64, lin_az as f64);
+            let angular_velocity =
+                messages::angular_velocity(ang_ax as f64, ang_ay as f64, ang_az as f64);
+            let imu = messages::imu_message(
+                header,
+                orientation,
+                [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                angular_velocity,
+                [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                linear_acceleration,
+                [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            );
+
+            let encoded = cdr::serialize::<_, _, CdrLe>(&imu, Infinite).unwrap();
+            publisher.put(encoded).res().unwrap();
+        };
+
+    driver.enable_reports();
+
+    driver.imu_driver.add_sensor_report_callback(
+        SENSOR_REPORTID_ROTATION_VECTOR,
+        String::from("report_update_cb"),
+        report_update_cb,
+    );
+
+    loop {
+        let _msg_count = driver.imu_driver.handle_messages(5, 10);
+        delay_ms(5);
     }
 }
