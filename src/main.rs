@@ -31,10 +31,6 @@ struct Args {
     #[arg(short = 't', long = "topic", default_value = "rt/imu")]
     topic: String,
 
-    /// publisher mode (default is subscriber mode).
-    #[arg(short = 'p', long = "publisher")]
-    publisher: bool,
-
     /// Specify the path to the spidevice.
     #[arg(short = 'd', long = "device", default_value = "/dev/spidev1.0")]
     spidevice: String,
