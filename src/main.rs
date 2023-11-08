@@ -92,14 +92,16 @@ fn main() -> io::Result<()> {
         .congestion_control(CongestionControl::Block)
         .res()
         .unwrap();
+    let frame = String::from("ImuMap");
+    println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
+    
     let report_update_cb =
         move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
             let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
             let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
             let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
 
-            let frame = String::from("ImuMap");
-            println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
+            
             // Build the IMU message type.
             let header = messages::header(&frame);
             let orientation = messages::orientation(qi as f64, qj as f64, qk as f64, qr as f64);
