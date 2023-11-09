@@ -3147,7 +3147,7 @@ dependencies = [
 [[package]]
 name = "zenoh-ros-type"
 version = "0.3.3"
-source = "git+https://github.com/evshary/zenoh-ros-type?branch=main#d185efc4840562f60409f71e007963a4b9036f98"
+source = "git+https://github.com/MaivinAI/zenoh-ros-type#400cb0729b73f7d9da6ca6e6e5e539e1b87569e1"
 dependencies = [
  "serde",
  "serde_derive",
