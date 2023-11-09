@@ -13,11 +13,11 @@ use bno08x::{
     },
 };
 
-pub struct Driver {
-    pub imu_driver: BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
+pub struct Driver<'a> {
+    pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
-impl Driver {
+impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
     /// with the path to the spidevice, gpiochip resources, and the  
     /// pins set for spi communications.
