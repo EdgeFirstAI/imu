@@ -18,4 +18,4 @@ clap = { version = "4.4.6", features = ["derive"] }
 zenoh = "0.10.0-rc"
 zenoh-ros-type = { git = "https://github.com/evshary/zenoh-ros-type", branch = "main" }
 cdr = "0.2.4"
-bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs", rev = "b614b976" }
+bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs" }
