@@ -2,6 +2,7 @@ use cdr::{CdrLe, Infinite};
 use clap::Parser;
 use std::io::{self};
 use zenoh::{prelude::sync::*, publication::CongestionControl};
+use std::time::Instant;
 mod connection;
 mod driver;
 mod messages;
@@ -23,7 +24,7 @@ struct Args {
     #[arg(short = 'm', long = "mode", default_value = "peer")]
     mode: String,
 
-    /// connect to endpoint.
+    /// connect to Zenoh endpoint.
     #[arg(short = 'e', long = "endpoint")]
     endpoint: Vec<String>,
 
@@ -54,6 +55,8 @@ struct Args {
 
 //#[async_std::main]
 fn main() -> io::Result<()> {
+    let start_time = Instant::now();
+
     let args = Args::parse();
 
     // Start a Zenoh connection at the endpoint.
@@ -97,9 +100,12 @@ fn main() -> io::Result<()> {
             let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
             let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
 
-            log!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
+            log!("x: {}, y: {}, z: {}, w: {}", qi, qj, qk, qr);
+            log!("x: {}, y: {}, z: {} [m/s^2]", lin_ax, lin_ay, lin_az);
+            log!("x: {}, y: {}, z: {} [rad/s] \n", ang_ax, ang_ay, ang_az);
+
             // Build the IMU message type.
-            let header = messages::header(&frame);
+            let header = messages::header(&frame, start_time);
             let orientation = messages::orientation(qi as f64, qj as f64, qk as f64, qr as f64);
             let linear_acceleration =
                 messages::linear_acceleration(lin_ax as f64, lin_ay as f64, lin_az as f64);
