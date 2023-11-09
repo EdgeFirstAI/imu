@@ -3,7 +3,7 @@ name = "camerapose"
 description = "Maivin camera pose measurement and publishing service using Zenoh"
 repository = "https://bitbucket.org/au-zone/camerapose"
 license = "CLOSED"
-version = "0.2.2"
+version = "1.0.0"
 edition = "2021"
 
 [profile.release]
@@ -18,4 +18,4 @@ clap = { version = "4.4.6", features = ["derive"] }
 zenoh = "0.10.0-rc"
 zenoh-ros-type = { git = "https://github.com/evshary/zenoh-ros-type", branch = "main" }
 cdr = "0.2.4"
-bno08x = { path = "../bno08x-rs" }
+bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs", rev = "b614b976" }

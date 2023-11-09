@@ -1,50 +1,40 @@
-use zenoh_ros_type::common_interfaces::geometry_msgs::Quaternion;
-use zenoh_ros_type::common_interfaces::geometry_msgs::Vector3;
-use zenoh_ros_type::rcl_interfaces::builtin_interfaces::Time;
-use zenoh_ros_type::common_interfaces::std_msgs::Header;
-use zenoh_ros_type::common_interfaces::sensor_msgs::IMU;
 use std::time::Instant;
+use zenoh_ros_type::{
+    common_interfaces::{
+        geometry_msgs::{Quaternion, Vector3},
+        sensor_msgs::IMU,
+        std_msgs::Header,
+    },
+    rcl_interfaces::builtin_interfaces::Time,
+};
 
 pub fn header(frame_id: &str, start_time: Instant) -> Header {
     Header {
         stamp: Time {
-                sec: start_time.elapsed().as_secs() as i32,
-                nanosec: start_time.elapsed().subsec_nanos() as u32,
-            },
+            sec: start_time.elapsed().as_secs() as i32,
+            nanosec: start_time.elapsed().subsec_nanos() as u32,
+        },
         frame_id: String::from(frame_id),
     }
 }
 
 pub fn orientation(x: f64, y: f64, z: f64, w: f64) -> Quaternion {
-    Quaternion {
-        x,
-        y,
-        z,
-        w,
-    }
+    Quaternion { x, y, z, w }
 }
 
 pub fn angular_velocity(x: f64, y: f64, z: f64) -> Vector3 {
-    Vector3 {
-        x,
-        y,
-        z,
-    }
+    Vector3 { x, y, z }
 }
 
 pub fn linear_acceleration(x: f64, y: f64, z: f64) -> Vector3 {
-    Vector3 {
-        x,
-        y,
-        z,
-    }
+    Vector3 { x, y, z }
 }
 
 pub fn imu_message(
-    header: Header, 
-    orientation: Quaternion, 
+    header: Header,
+    orientation: Quaternion,
     orientation_covariance: [f64; 9],
-    angular_velocity: Vector3, 
+    angular_velocity: Vector3,
     angular_velocity_covariance: [f64; 9],
     linear_acceleration: Vector3,
     linear_acceleration_covariance: [f64; 9],

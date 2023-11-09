@@ -374,7 +374,8 @@ dependencies = [
 
 [[package]]
 name = "bno08x"
-version = "0.0.1"
+version = "1.0.0"
+source = "git+ssh://git@bitbucket.org/au-zone/bno08x-rs?rev=b614b976#b614b976f2edfbdcf141b5a75ceb021f22d4cd3b"
 dependencies = [
  "gpiod",
  "spidev",
@@ -406,7 +407,7 @@ checksum = "981520c98f422fcc584dc1a95c334e6953900b9106bc47a9839b81790009eb21"
 
 [[package]]
 name = "camerapose"
-version = "0.2.2"
+version = "1.0.0"
 dependencies = [
  "async-std",
  "bno08x",

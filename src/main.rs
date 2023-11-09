@@ -1,8 +1,10 @@
 use cdr::{CdrLe, Infinite};
 use clap::Parser;
-use std::io::{self};
+use std::{
+    io::{self},
+    time::Instant,
+};
 use zenoh::{prelude::sync::*, publication::CongestionControl};
-use std::time::Instant;
 mod connection;
 mod driver;
 mod messages;
@@ -93,7 +95,7 @@ fn main() -> io::Result<()> {
         .unwrap();
     let frame = String::from("ImuMap");
     println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
-    
+
     let report_update_cb =
         move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
             let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
