@@ -32,9 +32,9 @@ impl Driver<'_> {
     /// Settings to set for the driver that was initialized.
     pub fn enable_reports(&mut self) {
         let reports = [
-            (SENSOR_REPORTID_ROTATION_VECTOR, 100),
-            (SENSOR_REPORTID_ACCELEROMETER, 300),
-            (SENSOR_REPORTID_GYROSCOPE, 300),
+            (SENSOR_REPORTID_ROTATION_VECTOR, 10),
+            (SENSOR_REPORTID_ACCELEROMETER, 100),
+            (SENSOR_REPORTID_GYROSCOPE, 100),
             (SENSOR_REPORTID_MAGNETIC_FIELD, 300),
         ];
 

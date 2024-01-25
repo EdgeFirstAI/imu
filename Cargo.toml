@@ -15,3 +15,5 @@ zmq = "0.10.0"
 structopt = "0.3"
 bno08x = { path = "../bno08x-rs" }
 chrono="0.4.26"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.105"

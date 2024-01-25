@@ -2,11 +2,37 @@
 //! Source was found in https://github.com/erickt/rust-zmq/blob/master/examples/zguide/weather_server/main.rs
 //! Publishes yaw, pitch, roll values gathered from
 //! the IMU to the dedicated endpoint set.
+use serde::Serialize;
 use zmq::{Context, Socket};
-
 pub struct Server {
     pub endpoint: String,
     pub socket: Socket,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub enum ImuStatus {
+    Connected,
+    #[serde(rename = "Not Connected")]
+    #[allow(dead_code)]
+    NotConnected,
+}
+#[derive(Serialize, Debug, Clone)]
+pub struct Imu {
+    pub status: ImuStatus,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub roll: f32,
+    pub acc: f32,
+    pub ax: f32,
+    pub ay: f32,
+    pub az: f32,
+    pub gx: f32,
+    pub gy: f32,
+    pub gz: f32,
+    pub mx: f32,
+    pub my: f32,
+    pub mz: f32,
+    pub time: u128,
 }
 
 impl Server {
@@ -32,44 +58,30 @@ impl Server {
         rot_acc: f32,
         rotation_update_time: u128,
     ) -> String {
-        // this is slower than C because the current format! implementation is
-        // very, very slow. Several orders of magnitude slower than glibc's
-        // sprintf
         let [yaw, pitch, roll] = attitude;
         let [ax, ay, az] = accelerometer;
         let [gx, gy, gz] = gyroscope;
         let [mx, my, mz] = magnetometer;
 
-        let attitude_message = format!(
-            "Attitude [degrees]: yaw={:.2}, pitch={:.2}, roll={:.2}, accuracy={:.2}",
-            yaw, pitch, roll, rot_acc
-        );
-
-        let accelerometer_message = format!(
-            "Accelerometer [m/s^2]: ax={:.2}, ay={:.2}, az={:.2}",
-            ax, ay, az
-        );
-
-        let gyroscope_message = format!(
-            "Gyroscope [rad/s]: gx={:.2}, gy={:.2}, gz={:.2}",
-            gx, gy, gz
-        );
-
-        let magnetometer_message = format!(
-            "Magnetometer [uTesla]: mx={:.2}, my={:.2}, mz={:.2}",
-            mx, my, mz
-        );
-
-        let timestamp_message = format!("timestamp [ns]: {}", rotation_update_time);
-        let update = format!(
-            "{}\n{}\n{}\n{}\n{}\n",
-            attitude_message,
-            accelerometer_message,
-            gyroscope_message,
-            magnetometer_message,
-            timestamp_message
-        );
-        self.socket.send(&update, 0).unwrap();
-        return update;
+        let data = Imu {
+            status: ImuStatus::Connected,
+            yaw,
+            pitch,
+            roll,
+            acc: rot_acc,
+            ax,
+            ay,
+            az,
+            gx,
+            gy,
+            gz,
+            mx,
+            my,
+            mz,
+            time: rotation_update_time,
+        };
+        let json = serde_json::to_string(&data).unwrap();
+        self.socket.send(json.as_bytes(), 0).unwrap();
+        return json;
     }
 }
