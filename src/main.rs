@@ -93,7 +93,10 @@ fn main() -> io::Result<()> {
             return Ok(());
         }
         eprintln!("ERROR: FRS records not updated");
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "FRS records not updated"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "FRS records not updated",
+        ));
     }
     // Starting and initializing the server.
     println!("[INFO] Starting server at endpoint: {}", opt.endpoint);
