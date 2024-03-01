@@ -1,10 +1,7 @@
 use cdr::{CdrLe, Infinite};
 use clap::Parser;
-use std::{
-    io::{self},
-    time::Instant,
-};
-use zenoh::{prelude::sync::*, publication::CongestionControl};
+use std::{io, str::FromStr, time::Instant};
+use zenoh::prelude::sync::*;
 mod connection;
 mod driver;
 mod messages;
@@ -62,7 +59,14 @@ fn main() -> io::Result<()> {
     let args = Args::parse();
 
     // Start a Zenoh connection at the endpoint.
-    let session = connection::start_session(&args.mode, &args.endpoint).unwrap();
+    let mut config = Config::default();
+
+    let mode = WhatAmI::from_str(&args.mode).unwrap();
+    config.set_mode(Some(mode)).unwrap();
+    // config.connect.endpoints = s.endpoints.iter().map(|v|
+    // v.parse().unwrap()).collect();
+
+    let session = zenoh::open(config).res_sync().unwrap();
 
     // Publish messages.
     macro_rules! log {
@@ -88,11 +92,11 @@ fn main() -> io::Result<()> {
         }
         return Ok(());
     }
-    let publisher = session
-        .declare_publisher(args.topic.clone())
-        .congestion_control(CongestionControl::Block)
-        .res()
-        .unwrap();
+    // let publisher = session
+    //     .declare_publisher(args.topic.clone())
+    //     .congestion_control(CongestionControl::Block)
+    //     .res()
+    //     .unwrap();
     let frame = String::from("ImuMap");
     println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
 
@@ -124,7 +128,14 @@ fn main() -> io::Result<()> {
             );
 
             let encoded = cdr::serialize::<_, _, CdrLe>(&imu, Infinite).unwrap();
-            publisher.put(encoded).res().unwrap();
+            session
+                .put(&args.topic, encoded)
+                .encoding(Encoding::WithSuffix(
+                    KnownEncoding::AppOctetStream,
+                    "sensor_msgs/msg/Imu".into(),
+                ))
+                .res()
+                .unwrap();
         };
 
     driver.enable_reports();
