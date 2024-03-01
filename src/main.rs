@@ -58,13 +58,10 @@ fn main() -> io::Result<()> {
 
     let args = Args::parse();
 
-    // Start a Zenoh connection at the endpoint.
     let mut config = Config::default();
 
     let mode = WhatAmI::from_str(&args.mode).unwrap();
     config.set_mode(Some(mode)).unwrap();
-    // config.connect.endpoints = s.endpoints.iter().map(|v|
-    // v.parse().unwrap()).collect();
 
     let session = zenoh::open(config).res_sync().unwrap();
 
@@ -92,11 +89,6 @@ fn main() -> io::Result<()> {
         }
         return Ok(());
     }
-    // let publisher = session
-    //     .declare_publisher(args.topic.clone())
-    //     .congestion_control(CongestionControl::Block)
-    //     .res()
-    //     .unwrap();
     let frame = String::from("ImuMap");
     println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
 
