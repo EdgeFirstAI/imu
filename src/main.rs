@@ -1,8 +1,8 @@
 use cdr::{CdrLe, Infinite};
 use clap::Parser;
+use log::{debug, info, trace};
 use std::{io, str::FromStr, time::Instant};
 use zenoh::prelude::sync::*;
-mod connection;
 mod driver;
 mod messages;
 
@@ -19,17 +19,21 @@ use bno08x::{
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// zenoh connection mode.
-    #[arg(short = 'm', long = "mode", default_value = "peer")]
-    mode: String,
-
-    /// connect to Zenoh endpoint.
-    #[arg(short = 'e', long = "endpoint")]
-    endpoint: Vec<String>,
-
     /// ros topic.
     #[arg(short = 't', long = "topic", default_value = "rt/imu")]
     topic: String,
+
+    /// connect to Zenoh endpoint.
+    #[arg(short = 'c', long = "connect", default_value = "tcp/127.0.0.1:7447")]
+    connect: Vec<String>,
+
+    /// list to Zenoh endpoint.
+    #[arg(short = 'l', long = "listen")]
+    listen: Vec<String>,
+
+    /// zenoh connection mode.
+    #[arg(short = 'm', long = "mode", default_value = "client")]
+    mode: String,
 
     /// Specify the path to the spidevice.
     #[arg(short = 'd', long = "device", default_value = "/dev/spidev1.0")]
@@ -43,17 +47,14 @@ struct Args {
     #[arg(short = 'r', long = "reset", default_value = "IMU_RST")]
     reset_pin: String,
 
-    /// Apply the ADIS2 FRS Configuration.
-    #[arg(short = 'c', long = "configure")]
+    /// Apply the Maivin2 FRS Configuration.
+    #[arg(long = "configure")]
     configure: bool,
-
-    /// Enable the verbose output.
-    #[arg(short = 'v', long = "verbose")]
-    verbose: bool,
 }
 
 //#[async_std::main]
 fn main() -> io::Result<()> {
+    env_logger::init();
     let start_time = Instant::now();
 
     let args = Args::parse();
@@ -62,35 +63,32 @@ fn main() -> io::Result<()> {
 
     let mode = WhatAmI::from_str(&args.mode).unwrap();
     config.set_mode(Some(mode)).unwrap();
-
-    let session = zenoh::open(config).res_sync().unwrap();
-
-    // Publish messages.
-    macro_rules! log {
-        ($( $args:expr ),*) => { if args.verbose {println!( $( $args ),* );} }
-    }
+    config.connect.endpoints = args.connect.iter().map(|v| v.parse().unwrap()).collect();
+    config.listen.endpoints = args.listen.iter().map(|v| v.parse().unwrap()).collect();
+    let _ = config.scouting.multicast.set_enabled(Some(false));
+    let _ = config.scouting.gossip.set_enabled(Some(false));
+    let session = zenoh::open(config.clone()).res_sync().unwrap();
+    info!("Opened Zenoh session");
 
     // Initializing the driver interface.
-    log!("[INFO] Initializing driver wrapper with parameters:");
-    log!(
-        "* spidevice: {}\n* hintn_pin: {}\n* reset_pin: {}",
-        args.spidevice,
-        args.hintn_pin,
-        args.reset_pin
+    debug!("Initializing driver wrapper with parameters:");
+    debug!(
+        "spidevice: {}\t hintn_pin: {}\t reset_pin: {}",
+        args.spidevice, args.hintn_pin, args.reset_pin
     );
 
     let mut driver = driver::Driver::new(&args.spidevice, &args.hintn_pin, &args.reset_pin);
     driver.imu_driver.init().unwrap();
     if args.configure {
         if driver.configure_frs() {
-            log!("FRS records updated");
+            eprintln!("FRS records updated");
         } else {
-            log!("ERROR: FRS records not updated");
+            eprintln!("ERROR: FRS records not updated");
         }
         return Ok(());
     }
     let frame = String::from("ImuMap");
-    println!("Publish IMU on '{}' for '{}')...", &args.topic, frame);
+    info!("IMU Device Initialized");
 
     let report_update_cb =
         move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
@@ -98,9 +96,19 @@ fn main() -> io::Result<()> {
             let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
             let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
 
-            log!("x: {}, y: {}, z: {}, w: {}", qi, qj, qk, qr);
-            log!("x: {}, y: {}, z: {} [m/s^2]", lin_ax, lin_ay, lin_az);
-            log!("x: {}, y: {}, z: {} [rad/s] \n", ang_ax, ang_ay, ang_az);
+            trace!("Pose:   x: {}, y: {}, z: {}, w: {}", qi, qj, qk, qr);
+            trace!(
+                "Accel:  x: {}, y: {}, z: {} [m/s^2]",
+                lin_ax,
+                lin_ay,
+                lin_az
+            );
+            trace!(
+                "Gryo:   x: {}, y: {}, z: {} [rad/s] \n",
+                ang_ax,
+                ang_ay,
+                ang_az
+            );
 
             // Build the IMU message type.
             let header = messages::header(&frame, start_time);
@@ -128,6 +136,7 @@ fn main() -> io::Result<()> {
                 ))
                 .res()
                 .unwrap();
+            trace!("Message sent on topic {}", args.topic);
         };
 
     driver.enable_reports();
