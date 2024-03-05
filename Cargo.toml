@@ -1,16 +1,14 @@
 [package]
-name = "camerapose"
-description = "Maivin camera pose measurement and publishing service using Zenoh"
+name = "imu"
+description = "Maivin IMU Service"
 repository = "https://bitbucket.org/au-zone/camerapose"
 license = "CLOSED"
-version = "2.0.1"
+version = "0.0.0"
 edition = "2021"
 
 [profile.release]
 opt-level = 3
 lto = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-std = {version = "1.12.0", features = ["attributes"] }

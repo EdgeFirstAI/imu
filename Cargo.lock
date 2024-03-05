@@ -406,20 +406,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "981520c98f422fcc584dc1a95c334e6953900b9106bc47a9839b81790009eb21"
 
 [[package]]
-name = "camerapose"
-version = "2.0.1"
-dependencies = [
- "async-std",
- "bno08x",
- "cdr",
- "clap 4.4.7",
- "env_logger 0.11.3",
- "log",
- "zenoh",
- "zenoh-ros-type",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1068,6 +1054,20 @@ checksum = "7d20d6b07bfbc108882d88ed8e37d39636dcc260e15e30c45e6ba089610b917c"
 dependencies = [
  "unicode-bidi",
  "unicode-normalization",
+]
+
+[[package]]
+name = "imu"
+version = "0.0.0"
+dependencies = [
+ "async-std",
+ "bno08x",
+ "cdr",
+ "clap 4.4.7",
+ "env_logger 0.11.3",
+ "log",
+ "zenoh",
+ "zenoh-ros-type",
 ]
 
 [[package]]
