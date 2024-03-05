@@ -19,7 +19,7 @@ pub struct Driver<'a> {
 
 impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
-    /// with the path to the spidevice, gpiochip resources, and the  
+    /// with the path to the spidevice, gpiochip resources, and the
     /// pins set for spi communications.
     pub fn new(spidevice: &str, hintn_pin: &str, reset_pin: &str) -> Self {
         let imu_driver = match BNO08x::new_bno08x_from_symbol(spidevice, hintn_pin, reset_pin) {
@@ -85,6 +85,6 @@ impl Driver<'_> {
             };
         }
 
-        return success;
+        success
     }
 }

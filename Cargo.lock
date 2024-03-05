@@ -1057,20 +1057,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "imu"
-version = "0.0.0"
-dependencies = [
- "async-std",
- "bno08x",
- "cdr",
- "clap 4.4.7",
- "env_logger 0.11.3",
- "log",
- "zenoh",
- "zenoh-ros-type",
-]
-
-[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1261,6 +1247,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ea9b256699eda7b0387ffbc776dd625e28bde3918446381781245b7a50349d8"
 dependencies = [
  "twox-hash",
+]
+
+[[package]]
+name = "maivin-imu"
+version = "0.0.0"
+dependencies = [
+ "async-std",
+ "bno08x",
+ "cdr",
+ "clap 4.4.7",
+ "env_logger 0.11.3",
+ "log",
+ "zenoh",
+ "zenoh-ros-type",
 ]
 
 [[package]]

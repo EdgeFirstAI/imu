@@ -1,5 +1,5 @@
 [package]
-name = "imu"
+name = "maivin-imu"
 description = "Maivin IMU Service"
 repository = "https://bitbucket.org/au-zone/camerapose"
 license = "CLOSED"
