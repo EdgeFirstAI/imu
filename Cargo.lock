@@ -375,9 +375,10 @@ dependencies = [
 [[package]]
 name = "bno08x"
 version = "1.0.0"
-source = "git+ssh://git@bitbucket.org/au-zone/bno08x-rs?rev=b614b976#b614b976f2edfbdcf141b5a75ceb021f22d4cd3b"
+source = "git+ssh://git@bitbucket.org/au-zone/bno08x-rs?branch=master#3de552259122d38e4d6f894a54cf2f54a0b713a5"
 dependencies = [
  "gpiod",
+ "log",
  "spidev",
 ]
 
