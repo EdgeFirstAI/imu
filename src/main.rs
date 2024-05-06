@@ -16,6 +16,7 @@ use bno08x::{
     wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
 };
 use computations::computations::{quaternion2euler, rad2degrees};
+use log::debug;
 use std::{
     io,
     sync::{Arc, Mutex},
@@ -24,8 +25,8 @@ use std::{
 use structopt::StructOpt;
 
 use chrono::{offset::Utc, DateTime};
-use std::time::SystemTime;
-
+use env_logger::{self, Env};
+use std::{sync::Once, time::SystemTime};
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "IMU Application",
@@ -74,9 +75,16 @@ struct Opt {
     #[structopt(long = "verbose", help = "Enables verbose output")]
     verbose: bool,
 }
+
+static INIT: Once = Once::new();
+fn start_logger() {
+    let env = Env::default().default_filter_or("trace");
+    INIT.call_once(|| {
+        env_logger::init_from_env(env);
+    });
+}
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
-
     macro_rules! log {
         ($( $args:expr ),*) => { if opt.verbose {println!( $( $args ),* );} }
     }
@@ -111,6 +119,7 @@ fn main() -> io::Result<()> {
     let report_update_cb = move |imu_driver: &BNO08x<
         SpiInterface<SpiDevice, GpiodIn, GpiodOut>,
     >| {
+        debug!("report_update_cb() was called");
         let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
         let rotation_update_time = imu_driver.report_update_time(SENSOR_REPORTID_ROTATION_VECTOR);
         let attitude = quaternion2euler(qr, qi, qj, qk).map(rad2degrees);
@@ -118,6 +127,7 @@ fn main() -> io::Result<()> {
         let gyroscope = imu_driver.gyro().unwrap();
         let magnetometer = imu_driver.mag_field().unwrap();
         let rot_acc = rad2degrees(imu_driver.rotation_acc());
+
         let msg = server.send_message(
             attitude,
             accelerometer,
@@ -156,13 +166,14 @@ fn main() -> io::Result<()> {
         0 => Duration::from_secs(1),
         1 => Duration::from_secs(10),
         2 => Duration::from_secs(60),
-        _ => Duration::from_secs(300 * (fail_count - 2)),
+        _ => Duration::from_secs(300 * (1 << (fail_count - 3))),
     };
     let mut old_elapsed = last_send_.lock().unwrap().elapsed();
     loop {
         let _msg_count = driver.imu_driver.handle_messages(5, 10);
         let elapsed = last_send_.lock().unwrap().elapsed();
         if elapsed > fail_time_limit(fail_count) {
+            start_logger();
             println!("[WARN] Last message was sent {:?} ago", elapsed);
             fail_count += 1;
         } else if fail_count > 0 && old_elapsed > elapsed {
