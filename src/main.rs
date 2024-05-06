@@ -16,7 +16,11 @@ use bno08x::{
     wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
 };
 use computations::computations::{quaternion2euler, rad2degrees};
-use std::io::{self};
+use std::{
+    io,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use structopt::StructOpt;
 
 use chrono::{offset::Utc, DateTime};
@@ -102,7 +106,8 @@ fn main() -> io::Result<()> {
     println!("[INFO] Starting server at endpoint: {}", opt.endpoint);
     let server = Server::new(opt.endpoint);
     server.start_server();
-
+    let last_send = Arc::from(Mutex::from(Instant::now()));
+    let last_send_ = last_send.clone();
     let report_update_cb = move |imu_driver: &BNO08x<
         SpiInterface<SpiDevice, GpiodIn, GpiodOut>,
     >| {
@@ -122,6 +127,7 @@ fn main() -> io::Result<()> {
             rotation_update_time,
         );
         let system_time = SystemTime::now();
+        *(last_send.lock().unwrap()) = Instant::now();
         let datetime: DateTime<Utc> = system_time.into();
         log!(
             "Message sent at {}:\n{}",
@@ -145,9 +151,25 @@ fn main() -> io::Result<()> {
 
     println!("[INFO] Reading IMU and pushing messages...");
     let loop_interval = 5;
-
+    let mut fail_count: u64 = 0;
+    let fail_time_limit = |fail_count: u64| match fail_count {
+        0 => Duration::from_secs(1),
+        1 => Duration::from_secs(10),
+        2 => Duration::from_secs(60),
+        _ => Duration::from_secs(300 * (fail_count - 2)),
+    };
+    let mut old_elapsed = last_send_.lock().unwrap().elapsed();
     loop {
         let _msg_count = driver.imu_driver.handle_messages(5, 10);
+        let elapsed = last_send_.lock().unwrap().elapsed();
+        if elapsed > fail_time_limit(fail_count) {
+            println!("[WARN] Last message was sent {:?} ago", elapsed);
+            fail_count += 1;
+        } else if fail_count > 0 && old_elapsed > elapsed {
+            println!("[INFO] Sending message after {:?}", old_elapsed);
+            fail_count = 0;
+        }
+        old_elapsed = elapsed;
         delay_ms(loop_interval);
     }
 }
