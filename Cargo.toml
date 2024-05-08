@@ -17,5 +17,3 @@ bno08x = { path = "../bno08x-rs" }
 chrono="0.4.26"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.105"
-env_logger = "0.11.3"
-log = "0.4.21"

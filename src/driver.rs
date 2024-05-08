@@ -17,6 +17,11 @@ pub struct Driver<'a> {
     pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
+pub const ROTATION_VECTOR_UPDATE_MS: u16 = 33;
+pub const ACCELEROMETER_UPDATE_MS: u16 = 100;
+pub const GYROSCOPE_UPDATE_MS: u16 = 100;
+pub const MAGNETIC_FIELD_UPDATE_MS: u16 = 300;
+
 impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
     /// with the path to the spidevice, gpiochip resources, and the  
@@ -30,12 +35,12 @@ impl Driver<'_> {
     }
 
     /// Settings to set for the driver that was initialized.
-    pub fn enable_reports(&mut self) {
+    pub fn enable_reports(&mut self) -> Result<(), String> {
         let reports = [
-            (SENSOR_REPORTID_ROTATION_VECTOR, 10),
-            (SENSOR_REPORTID_ACCELEROMETER, 100),
-            (SENSOR_REPORTID_GYROSCOPE, 100),
-            (SENSOR_REPORTID_MAGNETIC_FIELD, 300),
+            (SENSOR_REPORTID_ROTATION_VECTOR, ROTATION_VECTOR_UPDATE_MS),
+            (SENSOR_REPORTID_ACCELEROMETER, ACCELEROMETER_UPDATE_MS),
+            (SENSOR_REPORTID_GYROSCOPE, GYROSCOPE_UPDATE_MS),
+            (SENSOR_REPORTID_MAGNETIC_FIELD, MAGNETIC_FIELD_UPDATE_MS),
         ];
 
         let max_tries = 5;
@@ -48,11 +53,12 @@ impl Driver<'_> {
             }
 
             if !self.imu_driver.is_report_enabled(r) {
-                panic!("Could not enable report {}", r);
+                return Err(format!("Could not enable report {}", r));
             }
 
-            delay_ms(1000);
+            delay_ms(100);
         }
+        Ok(())
     }
 
     pub fn configure_frs(&mut self) -> bool {
@@ -67,7 +73,7 @@ impl Driver<'_> {
             i += 1;
         }
         if !self.imu_driver.is_report_enabled(report_id) {
-            panic!("Could not enable report {}", report_id);
+            return false;
         }
         delay_ms(1000);
 
