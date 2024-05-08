@@ -91,6 +91,6 @@ impl Driver<'_> {
             };
         }
 
-        return success;
+        success
     }
 }

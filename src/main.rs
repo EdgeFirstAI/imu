@@ -18,7 +18,7 @@ use bno08x::{
     },
     wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
 };
-use computations::computations::{quaternion2euler, rad2degrees};
+use computations::{quaternion2euler, rad2degrees};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
