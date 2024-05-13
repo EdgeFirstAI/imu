@@ -123,7 +123,6 @@ fn run_imu(opt: &Opt, server: &Server) -> Duration {
     macro_rules! log {
         ($( $args:expr ),*) => { if opt.verbose {println!( $( $args ),* );} }
     }
-    let start = Instant::now();
 
     let fail_time_limit = Duration::from_millis(opt.imu_msg_timeout);
     // Initializing the driver interface.
@@ -137,11 +136,11 @@ fn run_imu(opt: &Opt, server: &Server) -> Duration {
     let mut driver = Driver::new(&opt.spidevice, &opt.hintn_pin, &opt.reset_pin);
     if let Err(e) = driver.imu_driver.init() {
         eprintln!("[ERROR] Could not initialize driver: {:?}", e);
-        return start.elapsed();
+        return Duration::from_nanos(0);
     }
     if let Err(e) = driver.enable_reports() {
         eprintln!("[ERROR] Could not initialize reports: {:?}", e);
-        return start.elapsed();
+        return Duration::from_nanos(0);
     }
 
     let last_send = Arc::from(Mutex::from(Instant::now()));
@@ -181,7 +180,7 @@ fn run_imu(opt: &Opt, server: &Server) -> Duration {
         String::from("report_update_cb"),
         report_update_cb,
     );
-
+    let start = Instant::now();
     // Starting the loop process.
     let system_time = SystemTime::now();
     let datetime: DateTime<Utc> = system_time.into();
