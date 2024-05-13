@@ -90,10 +90,9 @@ fn main() {
     if opt.configure {
         let mut driver = Driver::new(&opt.spidevice, &opt.hintn_pin, &opt.reset_pin);
         driver.imu_driver.init().unwrap();
-        if driver.configure_frs() {
-            println!("FRS records updated");
-        } else {
-            eprintln!("ERROR: FRS records not updated");
+        match driver.configure_frs() {
+            Ok(_) => println!("FRS records updated"),
+            Err(e) => eprintln!("ERROR: FRS records not updated: {}", e),
         }
         return;
     }

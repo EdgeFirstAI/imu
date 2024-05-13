@@ -1,5 +1,4 @@
 //! Provides IMU driver initializations.
-
 use bno08x::{
     interface::{
         delay::delay_ms,
@@ -61,7 +60,7 @@ impl Driver<'_> {
         Ok(())
     }
 
-    pub fn configure_frs(&mut self) -> bool {
+    pub fn configure_frs(&mut self) -> Result<(), String> {
         // Need to enable a report so that the IMU reports back to the program.
         // Writes don't seem to work if the IMU doesn't also have anything send
         let max_tries = 5;
@@ -73,24 +72,29 @@ impl Driver<'_> {
             i += 1;
         }
         if !self.imu_driver.is_report_enabled(report_id) {
-            return false;
+            return Err(format!(
+                "Did not enable report {} for communcation",
+                report_id
+            ));
         }
         delay_ms(1000);
 
-        let mut success = false;
-        i = 0;
-        while i < max_tries && !success {
+        let mut last_err = "Success".to_string();
+        for _ in 0..max_tries {
             // The driver will normalize the quaternion so we don't need to normalize it
             // ourselves
             match self
                 .imu_driver
                 .set_sensor_orientation(-1.0, 0.0, 0.0, 1.0, 2000)
             {
-                Ok(v) => success = v,
-                Err(_) => success = false,
+                Ok(v) if v => return Ok(()),
+                Ok(_) => last_err = "FRS records write failed".to_string(),
+                Err(e) => last_err = format!("{:?}", e),
             };
         }
-
-        success
+        Err(format!(
+            "Did not update sensor orientation FRS records after {} tries. The last error was {}",
+            max_tries, last_err,
+        ))
     }
 }
