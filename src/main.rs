@@ -116,6 +116,9 @@ fn main() {
     );
 }
 
+// This function will reset and initialize the IMU, enable reports, and send
+// messages. If no message has been sent for while, the function will return.
+// The function returns total elapsed duration
 fn run_imu(opt: &Opt, server: &Server) -> Duration {
     macro_rules! log {
         ($( $args:expr ),*) => { if opt.verbose {println!( $( $args ),* );} }
