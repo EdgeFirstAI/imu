@@ -73,7 +73,7 @@ impl Driver<'_> {
         }
         if !self.imu_driver.is_report_enabled(report_id) {
             return Err(format!(
-                "Did not enable report {} for communcation",
+                "Did not enable report {} for communication",
                 report_id
             ));
         }
