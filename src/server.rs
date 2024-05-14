@@ -82,6 +82,6 @@ impl Server {
         };
         let json = serde_json::to_string(&data).unwrap();
         self.socket.send(json.as_bytes(), 0).unwrap();
-        return json;
+        json
     }
 }

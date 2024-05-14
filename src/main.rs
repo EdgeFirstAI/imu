@@ -4,7 +4,10 @@ mod computations;
 mod driver;
 mod server;
 
-use crate::{driver::Driver, server::Server};
+use crate::{
+    driver::{Driver, ROTATION_VECTOR_UPDATE_MS},
+    server::Server,
+};
 
 use bno08x::{
     interface::{
@@ -15,13 +18,15 @@ use bno08x::{
     },
     wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
 };
-use computations::computations::{quaternion2euler, rad2degrees};
-use std::io::{self};
+use computations::{quaternion2euler, rad2degrees};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use structopt::StructOpt;
 
 use chrono::{offset::Utc, DateTime};
 use std::time::SystemTime;
-
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "IMU Application",
@@ -67,16 +72,59 @@ struct Opt {
     )]
     configure: bool,
 
+    #[structopt(
+        short = "t",
+        long = "timeout",
+        help = "IMU times out after not recieving a message for this many milliseconds",
+        default_value = "165"
+    )]
+    imu_msg_timeout: u64,
+
     #[structopt(long = "verbose", help = "Enables verbose output")]
     verbose: bool,
 }
-fn main() -> io::Result<()> {
-    let opt = Opt::from_args();
 
+const SUCCESS_TIME_LIMIT: Duration = Duration::from_millis(ROTATION_VECTOR_UPDATE_MS as u64 * 100); // 3.3 s
+fn main() {
+    let opt = Opt::from_args();
+    if opt.configure {
+        let mut driver = Driver::new(&opt.spidevice, &opt.hintn_pin, &opt.reset_pin);
+        driver.imu_driver.init().unwrap();
+        match driver.configure_frs() {
+            Ok(_) => println!("FRS records updated"),
+            Err(e) => eprintln!("ERROR: FRS records not updated: {}", e),
+        }
+        return;
+    }
+    // Starting and initializing the server.
+    println!("[INFO] Starting server at endpoint: {}", opt.endpoint);
+    let server = Server::new(opt.endpoint.clone());
+    server.start_server();
+    let mut consecutive_fail_count = 0;
+    while consecutive_fail_count < 3 {
+        let elapsed = run_imu(&opt, &server);
+        // considered a success if the IMU runs for more than the time limit
+        if elapsed > SUCCESS_TIME_LIMIT {
+            consecutive_fail_count = 0;
+        } else {
+            consecutive_fail_count += 1;
+        }
+    }
+    eprintln!(
+        "[ERROR] {} Consecutive failures. Exiting...",
+        consecutive_fail_count
+    );
+}
+
+// This function will reset and initialize the IMU, enable reports, and send
+// messages. If no message has been sent for while, the function will return.
+// The function returns total elapsed duration
+fn run_imu(opt: &Opt, server: &Server) -> Duration {
     macro_rules! log {
         ($( $args:expr ),*) => { if opt.verbose {println!( $( $args ),* );} }
     }
 
+    let fail_time_limit = Duration::from_millis(opt.imu_msg_timeout);
     // Initializing the driver interface.
     log!("[INFO] Initializing driver wrapper with parameters:");
     log!(
@@ -86,23 +134,17 @@ fn main() -> io::Result<()> {
         opt.reset_pin
     );
     let mut driver = Driver::new(&opt.spidevice, &opt.hintn_pin, &opt.reset_pin);
-    driver.imu_driver.init().unwrap();
-    if opt.configure {
-        if driver.configure_frs() {
-            log!("FRS records updated");
-            return Ok(());
-        }
-        eprintln!("ERROR: FRS records not updated");
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "FRS records not updated",
-        ));
+    if let Err(e) = driver.imu_driver.init() {
+        eprintln!("[ERROR] Could not initialize driver: {:?}", e);
+        return Duration::from_nanos(0);
     }
-    // Starting and initializing the server.
-    println!("[INFO] Starting server at endpoint: {}", opt.endpoint);
-    let server = Server::new(opt.endpoint);
-    server.start_server();
+    if let Err(e) = driver.enable_reports() {
+        eprintln!("[ERROR] Could not initialize reports: {:?}", e);
+        return Duration::from_nanos(0);
+    }
 
+    let last_send = Arc::from(Mutex::from(Instant::now()));
+    let last_send_ = last_send.clone();
     let report_update_cb = move |imu_driver: &BNO08x<
         SpiInterface<SpiDevice, GpiodIn, GpiodOut>,
     >| {
@@ -113,6 +155,7 @@ fn main() -> io::Result<()> {
         let gyroscope = imu_driver.gyro().unwrap();
         let magnetometer = imu_driver.mag_field().unwrap();
         let rot_acc = rad2degrees(imu_driver.rotation_acc());
+
         let msg = server.send_message(
             attitude,
             accelerometer,
@@ -122,6 +165,8 @@ fn main() -> io::Result<()> {
             rotation_update_time,
         );
         let system_time = SystemTime::now();
+        let mut last_send_locked = last_send.lock().unwrap();
+        *(last_send_locked) = Instant::now();
         let datetime: DateTime<Utc> = system_time.into();
         log!(
             "Message sent at {}:\n{}",
@@ -130,24 +175,31 @@ fn main() -> io::Result<()> {
         );
     };
 
-    driver.enable_reports();
-
     driver.imu_driver.add_sensor_report_callback(
         SENSOR_REPORTID_ROTATION_VECTOR,
         String::from("report_update_cb"),
         report_update_cb,
     );
-
+    let start = Instant::now();
     // Starting the loop process.
     let system_time = SystemTime::now();
     let datetime: DateTime<Utc> = system_time.into();
     log!("{}", datetime.format("%d/%m/%Y %T"));
 
     println!("[INFO] Reading IMU and pushing messages...");
-    let loop_interval = 5;
+    let loop_interval = 2;
 
     loop {
-        let _msg_count = driver.imu_driver.handle_messages(5, 10);
+        let _msg_count = driver.imu_driver.handle_messages(2, 10);
+        let elapsed = last_send_.lock().unwrap().elapsed();
+
+        if elapsed > fail_time_limit {
+            println!(
+                "[ERROR] Last message was sent {:?} ago. Resetting IMU...",
+                elapsed
+            );
+            return start.elapsed();
+        }
         delay_ms(loop_interval);
     }
 }
