@@ -647,6 +647,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23d2f3407d9a573d666de4b5bdf10569d73ca9478087346697dcbae6244bfbcd"
 
 [[package]]
+name = "edgefirst-schemas"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35cd0d0624c0cd628a14cce2deaa232a9b0de67d5a0036299456d9ada17bf240"
+dependencies = [
+ "serde",
+ "serde_derive",
+]
+
+[[package]]
 name = "env_filter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1190,9 +1200,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.149"
+version = "0.2.154"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a08173bc88b7955d1b3145aa561539096c421ac8debde8cbc3612ec635fee29b"
+checksum = "ae743338b92ff9146ce83992f766a31066a91a8c84a45e0e9f21e7cf6de6d346"
 
 [[package]]
 name = "libloading"
@@ -1258,10 +1268,11 @@ dependencies = [
  "bno08x",
  "cdr",
  "clap 4.4.7",
+ "edgefirst-schemas",
  "env_logger 0.11.3",
+ "libc",
  "log",
  "zenoh",
- "zenoh-ros-type",
 ]
 
 [[package]]
@@ -3168,15 +3179,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be195cbe1930507af3a43fb9f67fbb85a4cc1cf84fda347b8f2512683d5b975b"
 dependencies = [
  "anyhow",
-]
-
-[[package]]
-name = "zenoh-ros-type"
-version = "0.3.3"
-source = "git+https://github.com/MaivinAI/zenoh-ros-type#400cb0729b73f7d9da6ca6e6e5e539e1b87569e1"
-dependencies = [
- "serde",
- "serde_derive",
 ]
 
 [[package]]

@@ -1,11 +1,3 @@
-use cdr::{CdrLe, Infinite};
-use clap::Parser;
-use log::{debug, info, trace};
-use std::{io, str::FromStr, time::Instant};
-use zenoh::prelude::sync::*;
-mod driver;
-mod messages;
-
 use bno08x::{
     interface::{
         delay::delay_ms,
@@ -15,6 +7,17 @@ use bno08x::{
     },
     wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
 };
+use cdr::{CdrLe, Infinite};
+use clap::Parser;
+use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, std_msgs};
+use log::{debug, info, trace};
+use std::{
+    io::{self, Error},
+    str::FromStr,
+};
+use zenoh::prelude::sync::*;
+
+mod driver;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -55,12 +58,9 @@ struct Args {
 //#[async_std::main]
 fn main() -> io::Result<()> {
     env_logger::init();
-    let start_time = Instant::now();
-
     let args = Args::parse();
 
     let mut config = Config::default();
-
     let mode = WhatAmI::from_str(&args.mode).unwrap();
     config.set_mode(Some(mode)).unwrap();
     config.connect.endpoints = args.connect.iter().map(|v| v.parse().unwrap()).collect();
@@ -73,7 +73,7 @@ fn main() -> io::Result<()> {
     // Initializing the driver interface.
     debug!("Initializing driver wrapper with parameters:");
     debug!(
-        "spidevice: {}\t hintn_pin: {}\t reset_pin: {}",
+        "spidevice: {} hintn_pin: {} reset_pin: {}",
         args.spidevice, args.hintn_pin, args.reset_pin
     );
 
@@ -87,7 +87,7 @@ fn main() -> io::Result<()> {
         }
         return Ok(());
     }
-    let frame = String::from("ImuMap");
+
     info!("IMU Device Initialized");
 
     let report_update_cb =
@@ -110,24 +110,33 @@ fn main() -> io::Result<()> {
                 ang_az
             );
 
-            // Build the IMU message type.
-            let header = messages::header(&frame, start_time);
-            let orientation = messages::orientation(qi as f64, qj as f64, qk as f64, qr as f64);
-            let linear_acceleration =
-                messages::linear_acceleration(lin_ax as f64, lin_ay as f64, lin_az as f64);
-            let angular_velocity =
-                messages::angular_velocity(ang_ax as f64, ang_ay as f64, ang_az as f64);
-            let imu = messages::imu_message(
-                header,
-                orientation,
-                [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                angular_velocity,
-                [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                linear_acceleration,
-                [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            );
+            let msg = sensor_msgs::IMU {
+                header: std_msgs::Header {
+                    stamp: timestamp().unwrap(),
+                    frame_id: "".to_owned(),
+                },
+                orientation: geometry_msgs::Quaternion {
+                    x: qi as f64,
+                    y: qj as f64,
+                    z: qk as f64,
+                    w: qr as f64,
+                },
+                orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                angular_velocity: geometry_msgs::Vector3 {
+                    x: ang_ax as f64,
+                    y: ang_ay as f64,
+                    z: ang_az as f64,
+                },
+                angular_velocity_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                linear_acceleration: geometry_msgs::Vector3 {
+                    x: lin_ax as f64,
+                    y: lin_ay as f64,
+                    z: lin_az as f64,
+                },
+                linear_acceleration_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            };
 
-            let encoded = cdr::serialize::<_, _, CdrLe>(&imu, Infinite).unwrap();
+            let encoded = cdr::serialize::<_, _, CdrLe>(&msg, Infinite).unwrap();
             session
                 .put(&args.topic, encoded)
                 .encoding(Encoding::WithSuffix(
@@ -151,4 +160,20 @@ fn main() -> io::Result<()> {
         let _msg_count = driver.imu_driver.handle_messages(5, 10);
         delay_ms(5);
     }
+}
+
+fn timestamp() -> Result<builtin_interfaces::Time, Error> {
+    let mut tp = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let err = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_RAW, &mut tp) };
+    if err != 0 {
+        return Err(Error::last_os_error());
+    }
+
+    Ok(builtin_interfaces::Time {
+        sec: tp.tv_sec as i32,
+        nanosec: tp.tv_nsec as u32,
+    })
 }
