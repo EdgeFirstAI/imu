@@ -3,7 +3,7 @@ name = "maivin-imu"
 description = "Maivin IMU Service"
 repository = "https://bitbucket.org/au-zone/camerapose"
 license = "CLOSED"
-version = "0.0.0"
+version = "0.3.0"
 edition = "2021"
 
 [profile.release]

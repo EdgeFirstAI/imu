@@ -1,5 +1,4 @@
 //! Provides IMU driver initializations.
-
 use bno08x::{
     interface::{
         delay::delay_ms,
@@ -17,6 +16,11 @@ pub struct Driver<'a> {
     pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
+pub const ROTATION_VECTOR_UPDATE_MS: u16 = 33;
+pub const ACCELEROMETER_UPDATE_MS: u16 = 100;
+pub const GYROSCOPE_UPDATE_MS: u16 = 100;
+// pub const MAGNETIC_FIELD_UPDATE_MS: u16 = 300;
+
 impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
     /// with the path to the spidevice, gpiochip resources, and the
@@ -30,12 +34,12 @@ impl Driver<'_> {
     }
 
     /// Settings to set for the driver that was initialized.
-    pub fn enable_reports(&mut self) {
+    pub fn enable_reports(&mut self) -> Result<(), String> {
         let reports = [
-            (SENSOR_REPORTID_ROTATION_VECTOR, 100),
-            (SENSOR_REPORTID_ACCELEROMETER, 300),
-            (SENSOR_REPORTID_GYROSCOPE, 300),
-            //(SENSOR_REPORTID_MAGNETIC_FIELD, 300),
+            (SENSOR_REPORTID_ROTATION_VECTOR, ROTATION_VECTOR_UPDATE_MS),
+            (SENSOR_REPORTID_ACCELEROMETER, ACCELEROMETER_UPDATE_MS),
+            (SENSOR_REPORTID_GYROSCOPE, GYROSCOPE_UPDATE_MS),
+            // (SENSOR_REPORTID_MAGNETIC_FIELD, MAGNETIC_FIELD_UPDATE_MS),
         ];
 
         let max_tries = 5;
@@ -48,14 +52,15 @@ impl Driver<'_> {
             }
 
             if !self.imu_driver.is_report_enabled(r) {
-                panic!("Could not enable report {}", r);
+                return Err(format!("Could not enable report {}", r));
             }
 
-            delay_ms(1000);
+            delay_ms(100);
         }
+        Ok(())
     }
 
-    pub fn configure_frs(&mut self) -> bool {
+    pub fn configure_frs(&mut self) -> Result<(), String> {
         // Need to enable a report so that the IMU reports back to the program.
         // Writes don't seem to work if the IMU doesn't also have anything send
         let max_tries = 5;
@@ -67,24 +72,29 @@ impl Driver<'_> {
             i += 1;
         }
         if !self.imu_driver.is_report_enabled(report_id) {
-            panic!("Could not enable report {}", report_id);
+            return Err(format!(
+                "Did not enable report {} for communication",
+                report_id
+            ));
         }
         delay_ms(1000);
 
-        let mut success = false;
-        i = 0;
-        while i < max_tries && !success {
+        let mut last_err = "Success".to_string();
+        for _ in 0..max_tries {
             // The driver will normalize the quaternion so we don't need to normalize it
             // ourselves
             match self
                 .imu_driver
                 .set_sensor_orientation(-1.0, 0.0, 0.0, 1.0, 2000)
             {
-                Ok(v) => success = v,
-                Err(_) => success = false,
+                Ok(v) if v => return Ok(()),
+                Ok(_) => last_err = "FRS records write failed".to_string(),
+                Err(e) => last_err = format!("{:?}", e),
             };
         }
-
-        success
+        Err(format!(
+            "Did not update sensor orientation FRS records after {} tries. The last error was {}",
+            max_tries, last_err,
+        ))
     }
 }
