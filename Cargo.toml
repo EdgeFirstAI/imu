@@ -3,7 +3,7 @@ name = "maivin-imu"
 description = "Maivin IMU Service"
 repository = "https://bitbucket.org/au-zone/camerapose"
 license = "CLOSED"
-version = "0.3.0"
+version = "0.0.0"
 edition = "2021"
 
 [profile.release]
@@ -23,7 +23,7 @@ clap = { version = "4.4.6", features = ["derive"] }
 zenoh = "0.10.0-rc"
 edgefirst-schemas = "1.2.1"
 cdr = "0.2.4"
-bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs", branch = "master" }
+bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs", rev = "9c5844f" }
 log = "0.4.21"
 env_logger = "0.11.2"
 libc = "0.2.154"

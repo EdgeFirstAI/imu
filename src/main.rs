@@ -9,7 +9,6 @@ use bno08x::{
 };
 use cdr::{CdrLe, Infinite};
 use clap::Parser;
-use driver::ROTATION_VECTOR_UPDATE_MS;
 use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, std_msgs};
 use env_logger::Env;
 use log::{debug, error, info, trace};
@@ -24,6 +23,8 @@ use zenoh::prelude::sync::*;
 use crate::driver::Driver;
 
 mod driver;
+
+const SUCCESS_TIME_LIMIT: Duration = Duration::from_secs(3);
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -65,7 +66,6 @@ struct Args {
     #[arg(short = 't', long = "timeout", default_value = "165")]
     imu_msg_timeout: u64,
 }
-const SUCCESS_TIME_LIMIT: Duration = Duration::from_millis(ROTATION_VECTOR_UPDATE_MS as u64 * 100); // 3.3 s
 
 fn main() -> io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));

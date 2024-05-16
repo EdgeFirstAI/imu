@@ -416,7 +416,7 @@ dependencies = [
 [[package]]
 name = "bno08x"
 version = "1.0.0"
-source = "git+ssh://git@bitbucket.org/au-zone/bno08x-rs?branch=master#9c5844f5f09d2a41384caf9a187bb6add25c90b2"
+source = "git+ssh://git@bitbucket.org/au-zone/bno08x-rs?rev=9c5844f#9c5844f5f09d2a41384caf9a187bb6add25c90b2"
 dependencies = [
  "gpiod",
  "log",
@@ -1366,7 +1366,7 @@ dependencies = [
 
 [[package]]
 name = "maivin-imu"
-version = "0.3.0"
+version = "0.0.0"
 dependencies = [
  "async-std",
  "bno08x",

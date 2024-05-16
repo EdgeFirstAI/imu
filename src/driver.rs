@@ -1,4 +1,6 @@
 //! Provides IMU driver initializations.
+use std::time::Duration;
+
 use bno08x::{
     interface::{
         delay::delay_ms,
@@ -16,10 +18,9 @@ pub struct Driver<'a> {
     pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
-pub const ROTATION_VECTOR_UPDATE_MS: u16 = 33;
-pub const ACCELEROMETER_UPDATE_MS: u16 = 100;
-pub const GYROSCOPE_UPDATE_MS: u16 = 100;
-// pub const MAGNETIC_FIELD_UPDATE_MS: u16 = 300;
+pub const ROTATION_VECTOR_UPDATE: Duration = Duration::from_millis(33);
+pub const ACCELEROMETER_UPDATE: Duration = Duration::from_millis(100);
+pub const GYROSCOPE_UPDATE: Duration = Duration::from_millis(100);
 
 impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
@@ -36,10 +37,18 @@ impl Driver<'_> {
     /// Settings to set for the driver that was initialized.
     pub fn enable_reports(&mut self) -> Result<(), String> {
         let reports = [
-            (SENSOR_REPORTID_ROTATION_VECTOR, ROTATION_VECTOR_UPDATE_MS),
-            (SENSOR_REPORTID_ACCELEROMETER, ACCELEROMETER_UPDATE_MS),
-            (SENSOR_REPORTID_GYROSCOPE, GYROSCOPE_UPDATE_MS),
-            // (SENSOR_REPORTID_MAGNETIC_FIELD, MAGNETIC_FIELD_UPDATE_MS),
+            (
+                SENSOR_REPORTID_ROTATION_VECTOR,
+                ROTATION_VECTOR_UPDATE.as_millis() as u16,
+            ),
+            (
+                SENSOR_REPORTID_ACCELEROMETER,
+                ACCELEROMETER_UPDATE.as_millis() as u16,
+            ),
+            (
+                SENSOR_REPORTID_GYROSCOPE,
+                GYROSCOPE_UPDATE.as_millis() as u16,
+            ),
         ];
 
         let max_tries = 5;
