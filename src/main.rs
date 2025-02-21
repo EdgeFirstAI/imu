@@ -4,7 +4,6 @@ mod driver;
 use args::Args;
 use bno08x::{
     interface::{
-        delay::delay_ms,
         gpio::{GpiodIn, GpiodOut},
         spidev::SpiDevice,
         SpiInterface,
@@ -16,12 +15,12 @@ use clap::Parser;
 use driver::Driver;
 use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, std_msgs};
 use log::{debug, error, info, trace};
-use tracing::info_span;
 use std::{
     io::Error,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt as _, Layer as _, Registry};
 use tracy_client::frame_mark;
 use zenoh::{
@@ -109,7 +108,7 @@ fn run_imu(args: &Args, session: Session) -> Duration {
 
     info!("IMU Device Initialized");
 
-    let last_send = Arc::from(Mutex::from(Instant::now()));
+    let last_send = Arc::from(Mutex::from((Instant::now(), false)));
     let last_send_ = last_send.clone();
     let report_update_cb =
         move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
@@ -163,7 +162,7 @@ fn run_imu(args: &Args, session: Session) -> Duration {
 
                 session.put(&args.topic, buf).encoding(enc).wait().unwrap();
                 let mut last_send_locked = last_send.lock().unwrap();
-                *(last_send_locked) = Instant::now();
+                *(last_send_locked) = (Instant::now(), true);
             });
 
             args.tracy.then(frame_mark);
@@ -175,17 +174,27 @@ fn run_imu(args: &Args, session: Session) -> Duration {
         report_update_cb,
     );
     let start = Instant::now();
-    let loop_interval = 2;
-
     loop {
         let _msg_count = driver.imu_driver.handle_messages(2, 10);
-        let elapsed = last_send_.lock().unwrap().elapsed();
+        let lock = last_send_.lock().unwrap();
+        let last_msg_time = lock.0;
+        let started = lock.1;
+        let elapsed = last_msg_time.elapsed();
 
-        if elapsed > fail_time_limit {
+        let time_limit = if started {
+            fail_time_limit
+        } else {
+            // 5x higher time limit for reading the first message
+            fail_time_limit * 5
+        };
+
+        if elapsed > time_limit {
             error!("Last message was sent {:?} ago. Resetting IMU...", elapsed);
             return start.elapsed();
         }
-        delay_ms(loop_interval);
+        // Don't need to sleep in this loop because handle_messages uses a sleep
+        // for the message polling, so if there is no message the
+        // handle_messages function will sleep the thread
     }
 }
 
