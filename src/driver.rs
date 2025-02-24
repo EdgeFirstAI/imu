@@ -18,9 +18,9 @@ pub struct Driver<'a> {
     pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
 
-pub const ROTATION_VECTOR_UPDATE: Duration = Duration::from_millis(33);
-pub const ACCELEROMETER_UPDATE: Duration = Duration::from_millis(100);
-pub const GYROSCOPE_UPDATE: Duration = Duration::from_millis(100);
+pub const ROTATION_VECTOR_UPDATE: Duration = Duration::from_millis(5);
+pub const ACCELEROMETER_UPDATE: Duration = Duration::from_millis(20);
+pub const GYROSCOPE_UPDATE: Duration = Duration::from_millis(20);
 
 impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
