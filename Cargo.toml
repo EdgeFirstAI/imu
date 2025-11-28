@@ -28,7 +28,7 @@ profiling = [
 ]
 
 [dependencies]
-bno08x = { git = "ssh://git@bitbucket.org/au-zone/bno08x-rs", tag = "1.0.1" }
+bno08x = { git = "https://github.com/EdgeFirstAI/bno08x", tag = "1.0.1" }
 cdr = "0.2.4"
 clap = { version = "4.5.30", features = ["derive", "env"] }
 edgefirst-schemas = "1.2.1"
