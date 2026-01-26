@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-01-26
+
+### Changed
+
+- Initial crates.io release with trusted publisher support
+
 ## [3.0.0] - 2026-01-26
 
 ### Changed
@@ -82,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rotation vector update rate changed to 33ms
 - Default message timeout set to 165ms
 
-[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/EdgeFirstAI/imu/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/EdgeFirstAI/imu/compare/v2.2.0...v3.0.0
 [2.2.0]: https://github.com/EdgeFirstAI/imu/compare/v2.1.3...v2.2.0
 [2.1.3]: https://github.com/EdgeFirstAI/imu/compare/v2.1.2...v2.1.3
