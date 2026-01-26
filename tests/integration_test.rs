@@ -61,8 +61,8 @@ fn start_imu_service() -> Child {
     let binary = find_imu_binary();
     println!("Starting IMU service: {}", binary);
 
+    // Tracy is disabled by default (only enabled with --tracy flag)
     Command::new(&binary)
-        .args(["--no-tracy"]) // Disable Tracy for tests
         .spawn()
         .expect("Failed to start IMU service")
 }
