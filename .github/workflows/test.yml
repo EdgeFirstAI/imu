@@ -89,16 +89,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for better analysis
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -116,29 +109,6 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
-
-      # Note: This is a binary-only crate, no library tests or doc tests
-
-      - name: Generate coverage
-        run: |
-          # Generate coverage for all tests
-          cargo llvm-cov --workspace --cobertura --output-path coverage.xml || true
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: coverage.xml
-          flags: ${{ matrix.platform.name }}
-          fail_ci_if_error: false
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-${{ matrix.platform.name }}
-          path: |
-            coverage.xml
-          retention-days: 30
 
   sonarcloud:
     name: SonarCloud Analysis
