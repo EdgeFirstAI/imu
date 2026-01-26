@@ -19,9 +19,34 @@ use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cd
 use log::{debug, error, info, trace};
 use std::{
     io::Error,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
+
+/// Global shutdown flag for graceful termination.
+/// This is critical for coverage instrumentation - LLVM uses atexit() handlers
+/// to flush profraw files, so the process must exit cleanly (not via SIGKILL).
+static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn handle_signal(_: libc::c_int) {
+    SHUTDOWN.store(true, Ordering::SeqCst);
+}
+
+fn install_signal_handlers() {
+    unsafe {
+        libc::signal(
+            libc::SIGTERM,
+            handle_signal as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGINT,
+            handle_signal as *const () as libc::sighandler_t,
+        );
+    }
+}
 use tracing::info_span;
 use tracing_subscriber::{layer::SubscriberExt as _, Layer as _, Registry};
 use tracy_client::frame_mark;
@@ -33,6 +58,9 @@ use zenoh::{
 const SUCCESS_TIME_LIMIT: Duration = Duration::from_secs(3);
 
 fn main() {
+    // Install signal handlers for graceful shutdown (required for coverage instrumentation)
+    install_signal_handlers();
+
     let args = Args::parse();
     if args.configure {
         let mut driver = Driver::new(&args.device, &args.interrupt, &args.reset);
@@ -70,7 +98,7 @@ fn main() {
     let session = zenoh::open(args.clone()).wait().unwrap();
 
     let mut consecutive_fail_count = 0;
-    while consecutive_fail_count < 3 {
+    while consecutive_fail_count < 3 && !SHUTDOWN.load(Ordering::SeqCst) {
         let elapsed = run_imu(&args, session.clone());
         // considered a success if the IMU runs for more than the time limit
         if elapsed > SUCCESS_TIME_LIMIT {
@@ -80,10 +108,14 @@ fn main() {
         }
     }
 
-    error!(
-        "{} Consecutive failures. Exiting...",
-        consecutive_fail_count
-    );
+    if SHUTDOWN.load(Ordering::SeqCst) {
+        info!("Received shutdown signal, exiting gracefully...");
+    } else {
+        error!(
+            "{} Consecutive failures. Exiting...",
+            consecutive_fail_count
+        );
+    }
 }
 
 // This function will reset and initialize the IMU, enable reports, and send
@@ -177,6 +209,12 @@ fn run_imu(args: &Args, session: Session) -> Duration {
     );
     let start = Instant::now();
     loop {
+        // Check for shutdown signal
+        if SHUTDOWN.load(Ordering::SeqCst) {
+            info!("Shutdown signal received in run_imu loop");
+            return start.elapsed();
+        }
+
         let _msg_count = driver.imu_driver.handle_messages(2, 10);
         let lock = last_send_.lock().unwrap();
         let last_msg_time = lock.0;

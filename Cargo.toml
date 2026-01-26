@@ -53,3 +53,6 @@ tracy-client = { version = "0.18.4", default-features = false, features = [
     "fibers",
 ] }
 zenoh = "1.7.2"
+
+[dev-dependencies]
+# Integration tests use the same dependencies as the main binary
