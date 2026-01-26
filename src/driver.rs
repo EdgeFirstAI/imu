@@ -4,17 +4,15 @@
 //! Provides IMU driver initializations.
 use std::time::Duration;
 
-use bno08x::{
+use bno08x_rs::{
     interface::{
         delay::delay_ms,
         gpio::{GpiodIn, GpiodOut},
         spidev::SpiDevice,
         SpiInterface,
     },
-    wrapper::{
-        BNO08x, SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE,
-        SENSOR_REPORTID_ROTATION_VECTOR,
-    },
+    BNO08x, SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE,
+    SENSOR_REPORTID_ROTATION_VECTOR,
 };
 
 pub struct Driver<'a> {
@@ -30,7 +28,7 @@ impl Driver<'_> {
     /// with the path to the spidevice, gpiochip resources, and the
     /// pins set for spi communications.
     pub fn new(spidevice: &str, hintn_pin: &str, reset_pin: &str) -> Self {
-        let imu_driver = match BNO08x::new_bno08x_from_symbol(spidevice, hintn_pin, reset_pin) {
+        let imu_driver = match BNO08x::new_spi_from_symbol(spidevice, hintn_pin, reset_pin) {
             Ok(imu_driver) => imu_driver,
             Err(_) => panic!("Initializing IMU driver failed!"),
         };

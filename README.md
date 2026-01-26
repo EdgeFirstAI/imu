@@ -1,40 +1,78 @@
-# Maivin IMU
+# EdgeFirst IMU
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://github.com/EdgeFirstAI/imu/actions/workflows/build.yml/badge.svg)](https://github.com/EdgeFirstAI/imu/actions/workflows/build.yml)
 [![Test Status](https://github.com/EdgeFirstAI/imu/actions/workflows/test.yml/badge.svg)](https://github.com/EdgeFirstAI/imu/actions/workflows/test.yml)
+[![Crates.io](https://img.shields.io/crates/v/edgefirst-imu.svg)](https://crates.io/crates/edgefirst-imu)
 
-Inertial Measurement Unit (IMU) driver for EdgeFirst Maivin platform.
+Inertial Measurement Unit (IMU) service for EdgeFirst Maivin platform using BNO08x sensors.
 
 ## Overview
 
-Maivin IMU is a ROS 2 node that provides IMU sensor data from BNO08x sensors for the EdgeFirst Maivin platform.
+EdgeFirst IMU provides IMU sensor data from BNO08x sensors, publishing fused orientation
+and raw sensor data over Zenoh for robotics and edge AI applications.
 
 ## Features
 
-- BNO08x IMU sensor support
-- Calibration and sensor fusion
+- BNO08x IMU sensor support via SPI
+- Sensor fusion with quaternion and rotation vector outputs
 - Real-time processing with Tracy profiling support
 - Zenoh integration for distributed communication
-- Quaternion and rotation vector outputs
+- Configurable update rates for rotation, accelerometer, and gyroscope
 
-## Requirements
+## Installation
 
-- Rust 1.70 or later
-- ROS 2 Humble or later
-- BNO08x IMU sensor hardware
-
-## Building
+### From crates.io
 
 ```bash
+cargo install edgefirst-imu
+```
+
+### From GitHub Releases
+
+Download pre-built binaries from the [releases page](https://github.com/EdgeFirstAI/imu/releases):
+
+```bash
+# For x86_64
+wget https://github.com/EdgeFirstAI/imu/releases/latest/download/edgefirst-imu-linux-x86_64
+chmod +x edgefirst-imu-linux-x86_64
+
+# For ARM64 (Maivin)
+wget https://github.com/EdgeFirstAI/imu/releases/latest/download/edgefirst-imu-linux-aarch64
+chmod +x edgefirst-imu-linux-aarch64
+```
+
+### From Source
+
+```bash
+git clone https://github.com/EdgeFirstAI/imu.git
+cd imu
 cargo build --release
 ```
 
-## Running
+## Requirements
+
+- Linux with SPI and GPIO support
+- BNO08x IMU sensor hardware
+- Rust 1.70 or later (for building from source)
+
+## Usage
 
 ```bash
-cargo run --release
+edgefirst-imu --device /dev/spidev1.0 --interrupt IMU_INT --reset IMU_RST
 ```
+
+### Options
+
+| Option | Environment Variable | Default | Description |
+|--------|---------------------|---------|-------------|
+| `--device` | `IMU_DEVICE` | `/dev/spidev1.0` | SPI device path |
+| `--interrupt` | `IMU_INTERRUPT` | `IMU_INT` | GPIO interrupt pin name |
+| `--reset` | `IMU_RESET` | `IMU_RST` | GPIO reset pin name |
+| `--topic` | `IMU_TOPIC` | `imu` | Zenoh topic for IMU data |
+| `--timeout` | `IMU_TIMEOUT` | `165` | Message timeout in milliseconds |
+| `--configure` | - | `false` | Configure FRS records and exit |
+| `--tracy` | - | `false` | Enable Tracy profiling |
 
 ## Testing
 

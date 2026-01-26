@@ -5,18 +5,17 @@ mod args;
 mod driver;
 
 use args::Args;
-use bno08x::{
+use bno08x_rs::{
     interface::{
         gpio::{GpiodIn, GpiodOut},
         spidev::SpiDevice,
         SpiInterface,
     },
-    wrapper::{BNO08x, SENSOR_REPORTID_ROTATION_VECTOR},
+    BNO08x, SENSOR_REPORTID_ROTATION_VECTOR,
 };
-use cdr::{CdrLe, Infinite};
 use clap::Parser;
 use driver::Driver;
-use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, std_msgs};
+use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cdr, std_msgs};
 use log::{debug, error, info, trace};
 use std::{
     io::Error,
@@ -160,7 +159,7 @@ fn run_imu(args: &Args, session: Session) -> Duration {
                     linear_acceleration_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 };
 
-                let buf = ZBytes::from(cdr::serialize::<_, _, CdrLe>(&msg, Infinite).unwrap());
+                let buf = ZBytes::from(serde_cdr::serialize(&msg).unwrap());
                 let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
 
                 session.put(&args.topic, buf).encoding(enc).wait().unwrap();
