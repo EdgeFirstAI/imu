@@ -235,7 +235,7 @@ git config user.email "your.email@example.com"
 
 ## License
 
-By contributing to EdgeFirst IMU, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE.txt).
+By contributing to EdgeFirst IMU, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
 
 All source files must include the SPDX license header:
 
