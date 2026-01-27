@@ -100,7 +100,7 @@ impl Driver<'_> {
                 Ok(v) if v => return Ok(()),
                 Ok(_) => last_err = "FRS records write failed".to_string(),
                 Err(e) => last_err = format!("{:?}", e),
-            };
+            }
         }
         Err(format!(
             "Did not update sensor orientation FRS records after {} tries. The last error was {}",

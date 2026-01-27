@@ -665,9 +665,9 @@ dependencies = [
 
 [[package]]
 name = "edgefirst-schemas"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bcb95d59b11a18a1fbe2c7efcb4c9cbec7568b90a13b4790383f65aaaa3454b"
+checksum = "cba26d1e495319d2d30807b16db2c35540d1614a20347c080df95d7e91feca32"
 dependencies = [
  "cbindgen",
  "cdr",
@@ -2527,9 +2527,9 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "siphasher"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
+checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "slab"
