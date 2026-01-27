@@ -3,7 +3,7 @@ name = "edgefirst-imu"
 description = "EdgeFirst IMU Service for BNO08x sensors"
 repository = "https://github.com/EdgeFirstAI/imu"
 license = "Apache-2.0"
-version = "3.0.1"
+version = "3.0.2"
 edition = "2021"
 rust-version = "1.90"
 keywords = ["imu", "bno08x", "zenoh", "robotics", "sensor"]
@@ -32,7 +32,7 @@ profiling = [
 
 [dependencies]
 bno08x-rs = "2.0.1"
-clap = { version = "4.5.54", features = ["derive", "env"] }
+clap = { version = "4.5.55", features = ["derive", "env"] }
 edgefirst-schemas = "1.5.1"
 libc = "0.2.180"
 log = "0.4.29"
