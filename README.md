@@ -54,7 +54,7 @@ cargo build --release
 
 - Linux with SPI and GPIO support
 - BNO08x IMU sensor hardware
-- Rust 1.70 or later (for building from source)
+- Rust 1.90 or later (for building from source)
 
 ## Usage
 
