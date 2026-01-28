@@ -142,6 +142,15 @@ jobs:
           mkdir -p release-assets
           VERSION=${{ needs.prepare-release.outputs.version }}
 
+          # REQUIRED: SBOM must be included in every release (per SPS-10)
+          if [ -f artifacts/sbom/sbom.json ]; then
+            cp artifacts/sbom/sbom.json \
+               release-assets/edgefirst-imu-v${VERSION}-sbom.json
+          else
+            echo "❌ ERROR: sbom.json not found - SBOM is REQUIRED for all releases"
+            exit 1
+          fi
+
           # Copy x86_64 binary
           if [ -f artifacts/packages-x86_64/edgefirst-imu-x86_64 ]; then
             cp artifacts/packages-x86_64/edgefirst-imu-x86_64 \
@@ -152,12 +161,6 @@ jobs:
           if [ -f artifacts/packages-aarch64/edgefirst-imu-aarch64 ]; then
             cp artifacts/packages-aarch64/edgefirst-imu-aarch64 \
                release-assets/edgefirst-imu-linux-aarch64
-          fi
-
-          # Copy SBOM
-          if [ -f artifacts/sbom/sbom.json ]; then
-            cp artifacts/sbom/sbom.json \
-               release-assets/edgefirst-imu-v${VERSION}-sbom.json
           fi
 
           echo "Release assets prepared:"
