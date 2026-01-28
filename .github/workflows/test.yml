@@ -31,10 +31,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
         with:
           components: rustfmt
 
@@ -47,22 +47,22 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
         with:
           components: clippy
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cargo/registry/index
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-index-
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
@@ -94,30 +94,30 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
         with:
           components: llvm-tools-preview
           targets: ${{ matrix.platform.target }}
 
       - name: Install cargo-llvm-cov and cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7e574ed8bb89811282a11aecb3fe1d043bf5bf0e # v2
         with:
           tool: cargo-llvm-cov,cargo-nextest
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cargo/registry/index
           key: ${{ runner.os }}-${{ matrix.platform.name }}-cargo-index
           restore-keys: ${{ runner.os }}-${{ matrix.platform.name }}-cargo-index
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: target
           key: ${{ runner.os }}-${{ matrix.platform.name }}-cargo-test
@@ -155,7 +155,7 @@ jobs:
           ls -lh instrumented-binaries/
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-${{ matrix.platform.name }}
           path: coverage.lcov
@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload instrumented binaries (aarch64 only)
         if: matrix.platform.name == 'aarch64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: instrumented-binaries-aarch64
           path: instrumented-binaries/
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload Rust instrumented objects for coverage processing (aarch64 only)
         if: matrix.platform.name == 'aarch64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rust-llvm-cov-aarch64
           path: target/llvm-cov-target/
@@ -196,10 +196,10 @@ jobs:
           find . -name "*.profraw" -delete 2>/dev/null || true
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Download instrumented binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: instrumented-binaries-aarch64
           path: instrumented-binaries/
@@ -257,7 +257,7 @@ jobs:
           fi
 
       - name: Upload hardware coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: coverage-hardware
@@ -278,21 +278,21 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
         with:
           components: llvm-tools-preview
 
       - name: Download Rust instrumented objects
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: rust-llvm-cov-aarch64
           path: target/llvm-cov-target/
 
       - name: Download hardware coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: coverage-hardware
           path: coverage-hardware/
@@ -390,7 +390,7 @@ jobs:
           wc -l coverage/coverage-hardware.lcov
 
       - name: Upload processed hardware coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-hardware-processed
           path: coverage/coverage-hardware.lcov
@@ -412,12 +412,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: coverage-*
           path: coverage/
@@ -437,7 +437,7 @@ jobs:
           echo "COVERAGE_PATHS=$COVERAGE_REPORTS" >> $GITHUB_ENV
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@master
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
