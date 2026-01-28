@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-01-28
+
+### Changed
+
+- Pin all GitHub Actions to SHA hashes for security (prevents tag mutation attacks)
+- Enforce SBOM requirement in release workflow (fails if sbom.json missing)
+
 ## [3.0.2] - 2026-01-27
 
 ### Changed
