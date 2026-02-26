@@ -6,12 +6,29 @@ use serde_json::json;
 use tracing::level_filters::LevelFilter;
 use zenoh::config::{Config, WhatAmI};
 
+/// Command-line arguments for EdgeFirst IMU Node.
+///
+/// This structure defines all configuration options for the IMU node,
+/// including device paths, Zenoh configuration, and debugging options.
+/// Arguments can be specified via command line or environment variables.
+///
+/// # Example
+///
+/// ```bash
+/// # Via command line
+/// edgefirst-imu --timeout 200 --topic rt/imu
+///
+/// # Via environment variables
+/// export TIMEOUT=200
+/// export MODE=client
+/// edgefirst-imu
+/// ```
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     /// IMU times out after not recieving a message for this many
     /// milliseconds,
-    #[arg(long, env, default_value = "165")]
+    #[arg(long, env = "TIMEOUT", default_value = "165")]
     pub timeout: u64,
 
     /// Specify the path to the spidevice.
@@ -35,27 +52,27 @@ pub struct Args {
     pub topic: String,
 
     /// Application log level
-    #[arg(long, env, default_value = "info")]
+    #[arg(long, env = "RUST_LOG", default_value = "info")]
     pub rust_log: LevelFilter,
 
     /// Enable Tracy profiler broadcast
-    #[arg(long, env)]
+    #[arg(long, env = "TRACY")]
     pub tracy: bool,
 
-    /// zenoh connection mode
-    #[arg(long, env, default_value = "peer")]
+    /// Zenoh participant mode (peer, client, or router)
+    #[arg(long, env = "MODE", default_value = "peer")]
     mode: WhatAmI,
 
-    /// connect to zenoh endpoints
-    #[arg(long, env)]
+    /// Zenoh endpoints to connect to (can specify multiple)
+    #[arg(long, env = "CONNECT")]
     connect: Vec<String>,
 
-    /// listen to zenoh endpoints
-    #[arg(long, env)]
+    /// Zenoh endpoints to listen on (can specify multiple)
+    #[arg(long, env = "LISTEN")]
     listen: Vec<String>,
 
-    /// disable zenoh multicast scouting
-    #[arg(long, env)]
+    /// Disable Zenoh multicast peer discovery
+    #[arg(long, env = "NO_MULTICAST_SCOUTING")]
     no_multicast_scouting: bool,
 }
 

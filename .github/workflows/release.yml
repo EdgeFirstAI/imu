@@ -163,6 +163,9 @@ jobs:
                release-assets/edgefirst-imu-linux-aarch64
           fi
 
+          # Copy default configuration file
+          cp imu.default release-assets/imu.default
+
           echo "Release assets prepared:"
           ls -lh release-assets/
 
@@ -187,12 +190,16 @@ jobs:
             |----------|--------|
             | Linux x86_64 | `edgefirst-imu-linux-x86_64` |
             | Linux ARM64 | `edgefirst-imu-linux-aarch64` |
+            | Configuration | `imu.default` |
 
             ```bash
             # Download and install (ARM64 example)
             wget https://github.com/EdgeFirstAI/imu/releases/download/v${{ needs.prepare-release.outputs.version }}/edgefirst-imu-linux-aarch64
             chmod +x edgefirst-imu-linux-aarch64
             sudo mv edgefirst-imu-linux-aarch64 /usr/local/bin/edgefirst-imu
+
+            # Install default configuration (optional)
+            sudo cp imu.default /etc/default/imu
             ```
 
             ## What's Changed
