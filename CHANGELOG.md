@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-03-01
+
+### Fixed
+
+- Handle empty CONNECT/LISTEN environment variables without panicking. The
+  default config ships with `CONNECT=""` and `LISTEN=""` which produced a
+  single empty-string endpoint, causing Zenoh's endpoint parser to panic.
+
 ## [3.0.4] - 2026-02-26
 
 ### Changed
@@ -106,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rotation vector update rate changed to 33ms
 - Default message timeout set to 165ms
 
-[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.0.4...HEAD
+[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.0.5...HEAD
+[3.0.5]: https://github.com/EdgeFirstAI/imu/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/EdgeFirstAI/imu/compare/v3.0.2...v3.0.4
 [3.0.2]: https://github.com/EdgeFirstAI/imu/compare/v3.0.1...v3.0.2
 [3.0.1]: https://github.com/EdgeFirstAI/imu/compare/v3.0.0...v3.0.1
