@@ -18,12 +18,11 @@ use driver::Driver;
 use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cdr, std_msgs};
 use log::{debug, error, info, trace};
 use std::{
-    io::Error,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 /// Global shutdown flag for graceful termination.
@@ -167,7 +166,7 @@ fn run_imu(args: &Args, session: Session) -> Duration {
 
                 let msg = sensor_msgs::IMU {
                     header: std_msgs::Header {
-                        stamp: timestamp().unwrap(),
+                        stamp: timestamp(),
                         frame_id: "".to_owned(),
                     },
                     orientation: geometry_msgs::Quaternion {
@@ -238,18 +237,12 @@ fn run_imu(args: &Args, session: Session) -> Duration {
     }
 }
 
-fn timestamp() -> Result<builtin_interfaces::Time, Error> {
-    let mut tp = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    let err = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_RAW, &mut tp) };
-    if err != 0 {
-        return Err(Error::last_os_error());
+fn timestamp() -> builtin_interfaces::Time {
+    let d = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    builtin_interfaces::Time {
+        sec: d.as_secs() as i32,
+        nanosec: d.subsec_nanos(),
     }
-
-    Ok(builtin_interfaces::Time {
-        sec: tp.tv_sec as i32,
-        nanosec: tp.tv_nsec as u32,
-    })
 }
