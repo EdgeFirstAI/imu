@@ -16,13 +16,13 @@ use bno08x_rs::{
 use clap::Parser;
 use driver::Driver;
 use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cdr, std_msgs};
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant, SystemTime, SystemTimeError, UNIX_EPOCH},
 };
 
 /// Global shutdown flag for graceful termination.
@@ -32,6 +32,33 @@ static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn handle_signal(_: libc::c_int) {
     SHUTDOWN.store(true, Ordering::SeqCst);
+}
+
+/// Errors that can occur when generating timestamps.
+#[derive(Debug)]
+pub enum TimestampError {
+    /// System clock is before Unix epoch.
+    BeforeEpoch(SystemTimeError),
+    /// System clock seconds exceed i32 range (Y2038).
+    Overflow,
+}
+
+impl std::fmt::Display for TimestampError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BeforeEpoch(e) => write!(f, "system clock before Unix epoch: {e}"),
+            Self::Overflow => write!(f, "system clock seconds exceed i32 range"),
+        }
+    }
+}
+
+impl std::error::Error for TimestampError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::BeforeEpoch(e) => Some(e),
+            Self::Overflow => None,
+        }
+    }
 }
 
 fn install_signal_handlers() {
@@ -164,9 +191,24 @@ fn run_imu(args: &Args, session: Session) -> Duration {
                     ang_az
                 );
 
+                let stamp = match timestamp() {
+                    Ok(t) => t,
+                    Err(TimestampError::Overflow) => {
+                        warn!("Timestamp overflow: seconds exceed i32::MAX, saturating");
+                        builtin_interfaces::Time {
+                            sec: i32::MAX,
+                            nanosec: 999_999_999,
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to get timestamp: {}", e);
+                        return;
+                    }
+                };
+
                 let msg = sensor_msgs::IMU {
                     header: std_msgs::Header {
-                        stamp: timestamp(),
+                        stamp,
                         frame_id: "".to_owned(),
                     },
                     orientation: geometry_msgs::Quaternion {
@@ -237,12 +279,18 @@ fn run_imu(args: &Args, session: Session) -> Duration {
     }
 }
 
-fn timestamp() -> builtin_interfaces::Time {
-    let d = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
-    builtin_interfaces::Time {
-        sec: d.as_secs() as i32,
-        nanosec: d.subsec_nanos(),
+fn timestamp() -> Result<builtin_interfaces::Time, TimestampError> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(TimestampError::BeforeEpoch)?;
+
+    let secs = duration.as_secs();
+    if secs > i32::MAX as u64 {
+        return Err(TimestampError::Overflow);
     }
+
+    Ok(builtin_interfaces::Time {
+        sec: secs as i32,
+        nanosec: duration.subsec_nanos(),
+    })
 }

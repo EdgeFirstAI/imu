@@ -34,6 +34,15 @@ The IMU service operates as a standalone binary with the following responsibilit
    - Zenoh topic publishing
    - Configurable topic names
 
+### ROS 2 Year 2038 Limit
+
+The ROS 2 `builtin_interfaces/msg/Time` message uses `int32` for the `sec` field, which overflows on 2038-01-19T03:14:07Z.
+
+IMU handles this as follows:
+1. `timestamp()` detects when seconds exceed `i32::MAX` and returns `TimestampError::Overflow`.
+2. The caller logs a warning and publishes with a saturated timestamp (`sec = i32::MAX`, `nanosec = 999_999_999`).
+3. IMU sensor data (orientation, angular velocity, linear acceleration) is still published — only the header timestamp is clamped.
+
 ### Configuration (`args.rs`)
 
 Configuration via command-line arguments and environment variables:
