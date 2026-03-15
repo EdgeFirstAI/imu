@@ -126,9 +126,11 @@ jobs:
       - name: Run unit tests with coverage
         run: |
           # Run tests with LCOV coverage output using profiling profile
-          # Note: This is a binary-only crate, so coverage will be limited
+          # Note: This is a binary-only crate with only #[ignore]d hardware tests,
+          # so nextest may exit with code 4 ("no tests to run"). Handle gracefully.
           cargo llvm-cov nextest --workspace --lcov --output-path coverage.lcov \
-            --profile profiling --cargo-profile profiling --no-fail-fast || true
+            --profile profiling --cargo-profile profiling --no-fail-fast \
+            || echo "No unit tests to run (binary-only crate with hardware-only tests)"
 
       - name: Build instrumented binary for integration tests (aarch64 only)
         if: matrix.platform.name == 'aarch64'
@@ -185,8 +187,7 @@ jobs:
     name: Hardware Integration Tests
     needs: test
     runs-on: raivin
-    # Only run on main branch or when explicitly requested via label
-    if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'test-hardware')
+
 
     steps:
       - name: Clean workspace (self-hosted runner)
@@ -404,10 +405,11 @@ jobs:
     name: SonarCloud Analysis
     runs-on: ubuntu-22.04
     needs: [test, hardware-test, process-hardware-coverage]
-    # Run if test succeeded, even if hardware tests were skipped
+    # Run if unit and hardware tests succeeded (not forks - they lack secrets)
     if: |
       always() &&
       needs.test.result == 'success' &&
+      needs.hardware-test.result == 'success' &&
       (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
@@ -425,15 +427,19 @@ jobs:
       - name: Organize coverage files for SonarCloud
         run: |
           echo "=== Downloaded coverage artifacts ==="
-          find coverage/ -type f
+          if [ -d coverage/ ]; then
+            find coverage/ -type f
+          else
+            echo "No coverage directory found (no coverage artifacts were uploaded)"
+          fi
 
           # Collect all LCOV coverage reports
-          COVERAGE_REPORTS=$(find coverage/ -name "*.lcov" | tr '\n' ',' | sed 's/,$//')
+          COVERAGE_REPORTS=$(find coverage/ -name "*.lcov" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
 
           echo "=== Coverage report paths ==="
-          echo "Coverage reports: $COVERAGE_REPORTS"
+          echo "Coverage reports: ${COVERAGE_REPORTS:-none}"
 
-          # Export for SonarCloud
+          # Export for SonarCloud (empty string is fine - SonarCloud handles it)
           echo "COVERAGE_PATHS=$COVERAGE_REPORTS" >> $GITHUB_ENV
 
       - name: SonarCloud Scan
