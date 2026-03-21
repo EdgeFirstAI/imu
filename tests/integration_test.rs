@@ -140,6 +140,17 @@ fn test_imu_publishing() {
                         + imu.orientation.w.powi(2))
                     .sqrt();
 
+                    // Verify timestamp is close to wall time
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                        .unwrap();
+                    let stamp_secs = imu.header.stamp.sec as u64;
+                    let now_secs = now.as_secs();
+                    assert!(
+                        now_secs.abs_diff(stamp_secs) < 5,
+                        "IMU timestamp {stamp_secs}s not close to wall time {now_secs}s"
+                    );
+
                     if (mag - 1.0).abs() < 0.1 {
                         message_count_clone.fetch_add(1, Ordering::SeqCst);
                     } else {
