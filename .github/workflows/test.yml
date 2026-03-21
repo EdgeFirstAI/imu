@@ -128,9 +128,16 @@ jobs:
           # Run tests with LCOV coverage output using profiling profile
           # Note: This is a binary-only crate with only #[ignore]d hardware tests,
           # so nextest may exit with code 4 ("no tests to run"). Handle gracefully.
+          set +e
           cargo llvm-cov nextest --workspace --lcov --output-path coverage.lcov \
-            --profile profiling --cargo-profile profiling --no-fail-fast \
-            || echo "No unit tests to run (binary-only crate with hardware-only tests)"
+            --profile profiling --cargo-profile profiling --no-fail-fast
+          rc=$?
+          set -e
+          if [ $rc -eq 4 ]; then
+            echo "No unit tests to run (binary-only crate with hardware-only tests)"
+          elif [ $rc -ne 0 ]; then
+            exit $rc
+          fi
 
       - name: Build instrumented binary for integration tests (aarch64 only)
         if: matrix.platform.name == 'aarch64'
