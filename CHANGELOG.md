@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-23
+
+### Fixed
+
+- Use `CLOCK_REALTIME` (wall-clock time) for IMU header timestamps, following the ROS 2
+  convention where `rclcpp::Node::now()` returns system time by default
+- Make `timestamp()` return `Result` with `TimestampError` enum to handle pre-epoch clock
+  and Y2038 overflow instead of panicking or silently wrapping
+- CI: only suppress nextest exit code 4 ("no tests to run") instead of masking all failures
+
+### Added
+
+- `TimestampError` enum with `BeforeEpoch` and `Overflow` variants, mirroring the navsat
+  implementation
+- ROS 2 Year 2038 Limit section in ARCHITECTURE.md
+- Timestamp wall-clock proximity assertion in integration tests
+- Repository AI assistant instructions (`.github/copilot-instructions.md`)
+
 ## [3.0.5] - 2026-03-01
 
 ### Fixed
@@ -114,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rotation vector update rate changed to 33ms
 - Default message timeout set to 165ms
 
-[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.0.5...HEAD
+[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/EdgeFirstAI/imu/compare/v3.0.5...v3.1.0
 [3.0.5]: https://github.com/EdgeFirstAI/imu/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/EdgeFirstAI/imu/compare/v3.0.2...v3.0.4
 [3.0.2]: https://github.com/EdgeFirstAI/imu/compare/v3.0.1...v3.0.2
