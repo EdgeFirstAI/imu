@@ -1,11 +1,30 @@
 // Copyright 2025 Au-Zone Technologies Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use clap::Parser;
+use bno08x_rs::{
+    SENSOR_REPORTID_ACCELEROMETER, SENSOR_REPORTID_GYROSCOPE, SENSOR_REPORTID_ROTATION_VECTOR,
+};
+use clap::{Parser, ValueEnum};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 use zenoh::config::{Config, WhatAmI};
 
+#[derive(Debug, Clone, ValueEnum)]
+pub enum PrimarySensor {
+    RotationVector,
+    Accelerometer,
+    Gyroscope,
+}
+
+impl PrimarySensor {
+    pub fn to_sensor_id(&self) -> u8 {
+        match self {
+            PrimarySensor::RotationVector => SENSOR_REPORTID_ROTATION_VECTOR,
+            PrimarySensor::Accelerometer => SENSOR_REPORTID_ACCELEROMETER,
+            PrimarySensor::Gyroscope => SENSOR_REPORTID_GYROSCOPE,
+        }
+    }
+}
 /// Command-line arguments for EdgeFirst IMU Node.
 ///
 /// This structure defines all configuration options for the IMU node,
@@ -42,6 +61,22 @@ pub struct Args {
     /// Specify the reset pin.
     #[arg(long, default_value = "IMU_RST")]
     pub reset: String,
+
+    /// The primary sensor is used to determine the timestamp for messages sent by the node, and is also used to determine Zenoh message frequency.
+    #[arg(long, env, default_value = "rotation-vector")]
+    pub primary_sensor: PrimarySensor,
+
+    /// Requested update rate for the rotation vector in microseconds. The driver may not be able to meet these rates, but will try its best. Set to 0 to disable the gyroscope.
+    #[arg(long, env, default_value = "5000")]
+    pub update_rot_us: u64,
+
+    /// Requested update rate for the accelerometer in microseconds. The driver may not be able to meet these rates, but will try its best. Set to 0 to disable the gyroscope.
+    #[arg(long, env, default_value = "10000")]
+    pub update_accel_us: u64,
+
+    /// Requested update rate for the gyroscope in microseconds. The driver may not be able to meet these rates, but will try its best. Set to 0 to disable the gyroscope.
+    #[arg(long, env, default_value = "10000")]
+    pub update_gyro_us: u64,
 
     /// Apply the Maivin2 FRS Configuration.
     #[arg(long)]

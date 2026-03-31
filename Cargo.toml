@@ -54,3 +54,6 @@ tracy-client = { version = "0.18.4", default-features = false, features = [
     "fibers",
 ] }
 zenoh = "1.7.2"
+
+[patch.crates-io]
+bno08x-rs = { git = "https://github.com/EdgeFirstAI/bno08x-rs.git", branch = "bugfix/EDGEAI-520-imu-resetting" }
