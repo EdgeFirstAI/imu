@@ -214,10 +214,12 @@ fn send_reports(session: Session, recv: std::sync::mpsc::Receiver<Report>, args:
                 }
             };
 
+            // TODO: measure the actual offset from the camera module (base_link)
+            // to the imu and set the frame_id and tf_static accordingly
             let msg = sensor_msgs::IMU {
                 header: std_msgs::Header {
                     stamp,
-                    frame_id: "imu".to_owned(),
+                    frame_id: "base_link".to_owned(),
                 },
                 orientation: geometry_msgs::Quaternion {
                     x: qi as f64,

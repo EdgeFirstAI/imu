@@ -35,9 +35,9 @@ impl Driver<'_> {
     /// Settings to set for the driver that was initialized.
     pub fn enable_reports(&mut self, args: &Args) -> Result<(), String> {
         let reports = [
-            (SENSOR_REPORTID_ROTATION_VECTOR, args.update_rot_us as u32),
-            (SENSOR_REPORTID_ACCELEROMETER, args.update_accel_us as u32),
-            (SENSOR_REPORTID_GYROSCOPE, args.update_gyro_us as u32),
+            (SENSOR_REPORTID_ROTATION_VECTOR, args.update_rot_us),
+            (SENSOR_REPORTID_ACCELEROMETER, args.update_accel_us),
+            (SENSOR_REPORTID_GYROSCOPE, args.update_gyro_us),
         ];
 
         let max_tries = 5;
