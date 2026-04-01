@@ -9,7 +9,7 @@ use serde_json::json;
 use tracing::level_filters::LevelFilter;
 use zenoh::config::{Config, WhatAmI};
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum PrimarySensor {
     RotationVector,
     Accelerometer,
@@ -17,7 +17,7 @@ pub enum PrimarySensor {
 }
 
 impl PrimarySensor {
-    pub fn to_sensor_id(&self) -> u8 {
+    pub fn to_sensor_id(self) -> u8 {
         match self {
             PrimarySensor::RotationVector => SENSOR_REPORTID_ROTATION_VECTOR,
             PrimarySensor::Accelerometer => SENSOR_REPORTID_ACCELEROMETER,
@@ -62,21 +62,28 @@ pub struct Args {
     #[arg(long, default_value = "IMU_RST")]
     pub reset: String,
 
-    /// The primary sensor is used to determine the timestamp for messages sent by the node, and is also used to determine Zenoh message frequency.
+    /// The primary sensor is used to determine the timestamp for messages
+    /// sent by the node, and is also used to determine Zenoh message frequency.
     #[arg(long, env, default_value = "rotation-vector")]
     pub primary_sensor: PrimarySensor,
 
-    /// Requested update rate for the rotation vector in microseconds. The driver may not be able to meet these rates, but will try its best. Set to 0 to disable the gyroscope.
+    /// Requested update rate for the rotation vector in microseconds.
+    /// The driver may not be able to meet these rates, but will try its best.
+    /// Set to 0 to disable the rotation vector.
     #[arg(long, env, default_value = "5000")]
-    pub update_rot_us: u64,
+    pub update_rot_us: u32,
 
-    /// Requested update rate for the accelerometer in microseconds. The driver may not be able to meet these rates, but will try its best. Set to 0 to disable the gyroscope.
+    /// Requested update rate for the accelerometer in microseconds.
+    /// The driver may not be able to meet these rates, but will try its best.
+    /// Set to 0 to disable the accelerometer.
     #[arg(long, env, default_value = "10000")]
-    pub update_accel_us: u64,
+    pub update_accel_us: u32,
 
-    /// Requested update rate for the gyroscope in microseconds. The driver may not be able to meet these rates, but will try its best. Set to 0 to disable the gyroscope.
+    /// Requested update rate for the gyroscope in microseconds.
+    /// The driver may not be able to meet these rates, but will try its best.
+    /// Set to 0 to disable the gyroscope.
     #[arg(long, env, default_value = "10000")]
-    pub update_gyro_us: u64,
+    pub update_gyro_us: u32,
 
     /// Apply the Maivin2 FRS Configuration.
     #[arg(long)]

@@ -195,7 +195,7 @@ fn send_reports(session: Session, recv: std::sync::mpsc::Receiver<Report>, args:
                 lin_az
             );
             trace!(
-                "Gryo:   x: {}, y: {}, z: {} [rad/s] \n",
+                "gryo:   x: {}, y: {}, z: {} [rad/s] \n",
                 ang_ax,
                 ang_ay,
                 ang_az
@@ -279,7 +279,7 @@ fn run_imu(args: &Args, session: Session) -> Duration {
 
     let primary_sensor_id = args.primary_sensor.to_sensor_id();
 
-    let (send_report_tx, send_report_rx) = std::sync::mpsc::channel();
+    let (send_report_tx, send_report_rx) = std::sync::mpsc::sync_channel(5);
     let report_update_cb =
         move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
             // unwraps are safe because these functions cannot fail
@@ -288,10 +288,15 @@ fn run_imu(args: &Args, session: Session) -> Duration {
             let gryo = imu_driver.gyro().unwrap();
             let timestamp = imu_driver.report_update_time(primary_sensor_id);
 
-            // if the sending thread fails we need to exit
-            send_report_tx
-                .send(Report::new(rot_qat, lin_accel, gryo, timestamp))
-                .expect("Sending thread failed");
+            match send_report_tx.try_send(Report::new(rot_qat, lin_accel, gryo, timestamp)) {
+                Ok(_) => {}
+                Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                    warn!("Report channel full, over 5 messages queued, dropping message");
+                }
+                Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                    panic!("Sending thread failed");
+                }
+            }
             let mut last_send_locked = last_send.lock().unwrap();
             *(last_send_locked) = (Instant::now(), true);
         };
