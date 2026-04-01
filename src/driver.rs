@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Provides IMU driver initializations.
-use std::time::Duration;
 
 use bno08x_rs::{
     interface::{
@@ -15,13 +14,11 @@ use bno08x_rs::{
     SENSOR_REPORTID_ROTATION_VECTOR,
 };
 
+use crate::args::Args;
+
 pub struct Driver<'a> {
     pub imu_driver: BNO08x<'a, SpiInterface<SpiDevice, GpiodIn, GpiodOut>>,
 }
-
-pub const ROTATION_VECTOR_UPDATE: Duration = Duration::from_millis(5);
-pub const ACCELEROMETER_UPDATE: Duration = Duration::from_millis(20);
-pub const GYROSCOPE_UPDATE: Duration = Duration::from_millis(20);
 
 impl Driver<'_> {
     /// Creates a Driver struct object initializing the driver wrapper
@@ -36,28 +33,23 @@ impl Driver<'_> {
     }
 
     /// Settings to set for the driver that was initialized.
-    pub fn enable_reports(&mut self) -> Result<(), String> {
+    pub fn enable_reports(&mut self, args: &Args) -> Result<(), String> {
         let reports = [
-            (
-                SENSOR_REPORTID_ROTATION_VECTOR,
-                ROTATION_VECTOR_UPDATE.as_millis() as u16,
-            ),
-            (
-                SENSOR_REPORTID_ACCELEROMETER,
-                ACCELEROMETER_UPDATE.as_millis() as u16,
-            ),
-            (
-                SENSOR_REPORTID_GYROSCOPE,
-                GYROSCOPE_UPDATE.as_millis() as u16,
-            ),
+            (SENSOR_REPORTID_ROTATION_VECTOR, args.update_rot_us),
+            (SENSOR_REPORTID_ACCELEROMETER, args.update_accel_us),
+            (SENSOR_REPORTID_GYROSCOPE, args.update_gyro_us),
         ];
 
         let max_tries = 5;
 
         for (r, t) in reports {
+            if t == 0 {
+                continue;
+            }
+
             let mut i = 0;
             while i < max_tries && !self.imu_driver.is_report_enabled(r) {
-                let _ = self.imu_driver.enable_report(r, t);
+                let _ = self.imu_driver.enable_report_us(r, t);
                 i += 1;
             }
 
@@ -73,6 +65,10 @@ impl Driver<'_> {
     pub fn configure_frs(&mut self) -> Result<(), String> {
         // Need to enable a report so that the IMU reports back to the program.
         // Writes don't seem to work if the IMU doesn't also have anything send
+        // This is because the PS0/WAKE pin isn't connected to GPIO so we can only write
+        // to the IMU when it's awake, which is when it's sending reports back
+        // https://au-zone.atlassian.net/browse/TOP2-188
+        // MVN2-300000 R00A GNSS-IMU Schematics.PDF
         let max_tries = 5;
 
         let report_id = SENSOR_REPORTID_ACCELEROMETER;
