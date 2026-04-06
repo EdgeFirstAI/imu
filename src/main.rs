@@ -21,10 +21,12 @@ use std::{
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
+        mpsc::SyncSender,
         Mutex,
     },
     time::{Duration, Instant, SystemTimeError},
 };
+use thread_priority::ThreadPriority;
 
 /// Global shutdown flag for graceful termination.
 /// This is critical for coverage instrumentation - LLVM uses atexit() handlers
@@ -133,10 +135,16 @@ fn main() {
     }
 
     let session = zenoh::open(args.clone()).wait().unwrap();
+    let (send_report_tx, send_report_rx) = std::sync::mpsc::sync_channel(5);
+    let args_ = args.clone();
+    std::thread::Builder::new()
+        .name("imu_reports_thread".to_string())
+        .spawn(move || send_reports(session, send_report_rx, args_))
+        .unwrap();
 
     let mut consecutive_fail_count = 0;
     while consecutive_fail_count < 3 && !SHUTDOWN.load(Ordering::SeqCst) {
-        let elapsed = run_imu(&args, session.clone());
+        let elapsed = run_imu(args.clone(), send_report_tx.clone());
         // considered a success if the IMU runs for more than the time limit
         if elapsed > SUCCESS_TIME_LIMIT {
             consecutive_fail_count = 0;
@@ -294,93 +302,104 @@ fn send_reports(session: Session, recv: std::sync::mpsc::Receiver<Report>, args:
 // This function will reset and initialize the IMU, enable reports, and send
 // messages. If no message has been sent for while, the function will return.
 // The function returns total elapsed duration
-fn run_imu(args: &Args, session: Session) -> Duration {
-    let fail_time_limit = Duration::from_millis(args.timeout);
-    // Initializing the driver interface.
-    debug!("Initializing driver wrapper with parameters:");
-    debug!(
-        "device: {} interrupt: {} reset: {}",
-        args.device, args.interrupt, args.reset
-    );
-
-    let mut driver = driver::Driver::new(&args.device, &args.interrupt, &args.reset);
-    if let Err(e) = driver.imu_driver.init() {
-        error!("Could not initialize driver: {:?}", e);
-        return Duration::from_nanos(0);
-    }
-    if let Err(e) = driver.enable_reports(args) {
-        error!("Could not initialize reports: {:?}", e);
-        return Duration::from_nanos(0);
-    }
-
-    info!("IMU Device Initialized");
-
-    let last_send = Rc::from(Mutex::from((Instant::now(), false)));
-    let last_send_ = last_send.clone();
-
-    let primary_sensor_id = args.primary_sensor.to_sensor_id();
-
-    let (send_report_tx, send_report_rx) = std::sync::mpsc::sync_channel(5);
-    let report_update_cb =
-        move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
-            // unwraps are safe because these functions cannot fail
-            let rot_qat = imu_driver.rotation_quaternion().unwrap();
-            let lin_accel = imu_driver.accelerometer().unwrap();
-            let gryo = imu_driver.gyro().unwrap();
-            let timestamp = imu_driver.report_update_time(primary_sensor_id);
-
-            match send_report_tx.try_send(Report::new(rot_qat, lin_accel, gryo, timestamp)) {
-                Ok(_) => {}
-                Err(std::sync::mpsc::TrySendError::Full(_)) => {
-                    warn!("Report channel full, over 5 messages queued, dropping message");
-                }
-                Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
-                    panic!("Sending thread failed");
-                }
+// The function will try to set the IMU thread to maximum priority to ensure timely processing of IMU messages
+fn run_imu(args: Args, send_report_tx: SyncSender<Report>) -> Duration {
+    let handle = thread_priority::ThreadBuilder::default()
+        .name("IMU Thread")
+        .priority(ThreadPriority::Max)
+        .spawn(move |res| {
+            if let Err(e) = res {
+                warn!("Failed to set thread priority: {:?}", e);
             }
-            let mut last_send_locked = last_send.lock().unwrap();
-            *(last_send_locked) = (Instant::now(), true);
-        };
 
-    driver.imu_driver.add_sensor_report_callback(
-        primary_sensor_id,
-        String::from("report_update_cb"),
-        report_update_cb,
-    );
+            let fail_time_limit = Duration::from_millis(args.timeout);
+            // Initializing the driver interface.
+            debug!("Initializing driver wrapper with parameters:");
+            debug!(
+                "device: {} interrupt: {} reset: {}",
+                args.device, args.interrupt, args.reset
+            );
 
-    let args_ = args.clone();
-    std::thread::Builder::new()
-        .name("imu_reports_thread".to_string())
-        .spawn(move || send_reports(session, send_report_rx, args_))
-        .unwrap();
+            let mut driver = driver::Driver::new(&args.device, &args.interrupt, &args.reset);
+            if let Err(e) = driver.imu_driver.init() {
+                error!("Could not initialize driver: {:?}", e);
+                return Duration::from_nanos(0);
+            }
+            if let Err(e) = driver.enable_reports(&args) {
+                error!("Could not initialize reports: {:?}", e);
+                return Duration::from_nanos(0);
+            }
 
-    let start = Instant::now();
-    loop {
-        // Check for shutdown signal
-        if SHUTDOWN.load(Ordering::SeqCst) {
-            info!("Shutdown signal received in run_imu loop");
-            return start.elapsed();
-        }
+            info!("IMU Device Initialized");
 
-        let _msg_count = driver.imu_driver.handle_messages(2, 10);
-        let lock = last_send_.lock().unwrap();
-        let last_msg_time = lock.0;
-        let started = lock.1;
-        let elapsed = last_msg_time.elapsed();
+            let last_send = Rc::from(Mutex::from((Instant::now(), false)));
+            let last_send_ = last_send.clone();
 
-        let time_limit = if started {
-            fail_time_limit
-        } else {
-            // 5x higher time limit for reading the first message
-            fail_time_limit * 5
-        };
+            let primary_sensor_id = args.primary_sensor.to_sensor_id();
 
-        if elapsed > time_limit {
-            error!("Last message was sent {:?} ago. Resetting IMU...", elapsed);
-            return start.elapsed();
-        }
-        // Don't need to sleep in this loop because handle_messages uses a sleep
-        // for the message polling, so if there is no message the
-        // handle_messages function will sleep the thread
-    }
+            let report_update_cb = move |imu_driver: &BNO08x<
+                SpiInterface<SpiDevice, GpiodIn, GpiodOut>,
+            >| {
+                // unwraps are safe because these functions cannot fail
+                let rot_qat = imu_driver.rotation_quaternion().unwrap();
+                let lin_accel = imu_driver.accelerometer().unwrap();
+                let gryo = imu_driver.gyro().unwrap();
+                let timestamp = imu_driver.report_update_time(primary_sensor_id);
+
+                match send_report_tx.try_send(Report::new(rot_qat, lin_accel, gryo, timestamp)) {
+                    Ok(_) => {}
+                    Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                        warn!("Report channel full, over 5 messages queued, dropping message");
+                    }
+                    Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                        panic!("Sending thread failed");
+                    }
+                }
+                let mut last_send_locked = last_send.lock().unwrap();
+                *(last_send_locked) = (Instant::now(), true);
+            };
+
+            driver.imu_driver.add_sensor_report_callback(
+                primary_sensor_id,
+                String::from("report_update_cb"),
+                report_update_cb,
+            );
+
+            let start = Instant::now();
+            loop {
+                // Check for shutdown signal
+                if SHUTDOWN.load(Ordering::SeqCst) {
+                    info!("Shutdown signal received in run_imu loop");
+                    return start.elapsed();
+                }
+
+                let _msg_count = driver.imu_driver.handle_messages(2, 10);
+                let lock = last_send_.lock().unwrap();
+                let last_msg_time = lock.0;
+                let started = lock.1;
+                let elapsed = last_msg_time.elapsed();
+
+                let time_limit = if started {
+                    fail_time_limit
+                } else {
+                    // 5x higher time limit for reading the first message
+                    fail_time_limit * 5
+                };
+
+                if elapsed > time_limit {
+                    error!("Last message was sent {:?} ago. Resetting IMU...", elapsed);
+                    return start.elapsed();
+                }
+                // Don't need to sleep in this loop because handle_messages uses a sleep
+                // for the message polling, so if there is no message the
+                // handle_messages function will sleep the thread
+            }
+        });
+
+    let Ok(handle) = handle else {
+        error!("Failed to spawn IMU thread");
+        return Duration::from_nanos(0);
+    };
+
+    handle.join().expect("panicked when joining IMU thread")
 }
