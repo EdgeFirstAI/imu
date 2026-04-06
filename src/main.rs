@@ -214,6 +214,45 @@ fn send_reports(session: Session, recv: std::sync::mpsc::Receiver<Report>, args:
                 }
             };
 
+            // ROS REP 145: If a data field is unreported, the first element (0) of the covariance matrix should be set to -1
+            const UNREPORTED_COVARIANCE: [f64; 9] = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+
+            // datasheet 6.7 Performance Characteristics says Rotation Vector error is 3.5 degrees, which is about 0.0611 radians
+            // so the variance is 0.00373. It also mentions that in practice the yaw axis (Z) has a higher variance of 5 degrees
+            let orientation_covariance = if args.update_rot_us > 0 {
+                [
+                    0.00373, 0.0, 0.0, // x axis
+                    0.0, 0.00373, 0.0, // y axis
+                    0.0, 0.0, 0.00593, // z axis (higher variance for yaw)
+                ]
+            } else {
+                UNREPORTED_COVARIANCE
+            };
+
+            // datasheet 6.7 Performance Characteristics says gryo error is 3.1 degrees/s, which is about 0.0541 radians/s
+            // so the variance is 0.00293
+            let angular_velocity_covariance = if args.update_gyro_us > 0 {
+                [
+                    0.00293, 0.0, 0.0, // x axis
+                    0.0, 0.00293, 0.0, // y axis
+                    0.0, 0.0, 0.00293, // z axis
+                ]
+            } else {
+                UNREPORTED_COVARIANCE
+            };
+
+            // datasheet 6.7 Performance Characteristics says linear acceleration error is 0.35 m/s^2
+            // so the variance is 0.1225
+            let linear_acceleration_covariance = if args.update_accel_us > 0 {
+                [
+                    0.1225, 0.0, 0.0, // x axis
+                    0.0, 0.1225, 0.0, // y axis
+                    0.0, 0.0, 0.1225, // z axis
+                ]
+            } else {
+                UNREPORTED_COVARIANCE
+            };
+
             // TODO: measure the actual offset from the camera module (base_link)
             // to the imu and set the frame_id and tf_static accordingly
             let msg = sensor_msgs::IMU {
@@ -227,37 +266,19 @@ fn send_reports(session: Session, recv: std::sync::mpsc::Receiver<Report>, args:
                     z: qk as f64,
                     w: qr as f64,
                 },
-                // datasheet 6.7 Performance Characteristics says Rotation Vector error is 3.5 degrees, which is about 0.0611 radians
-                // so the variance is 0.00373. It also mentions that in practice the yaw axis (Z) has a higher variance of 5 degrees
-                orientation_covariance: [
-                    0.00373, 0.0, 0.0, // x axis
-                    0.0, 0.00373, 0.0, // y axis
-                    0.0, 0.0, 0.00762, // z axis
-                ],
+                orientation_covariance,
                 angular_velocity: geometry_msgs::Vector3 {
                     x: ang_ax as f64,
                     y: ang_ay as f64,
                     z: ang_az as f64,
                 },
-                // datasheet 6.7 Performance Characteristics says gryo error is 3.1 degrees/s, which is about 0.0541 radians/s
-                // so the variance is 0.00293
-                angular_velocity_covariance: [
-                    0.00293, 0.0, 0.0, // x axis
-                    0.0, 0.00293, 0.0, // y axis
-                    0.0, 0.0, 0.00293, // z axis
-                ],
+                angular_velocity_covariance,
                 linear_acceleration: geometry_msgs::Vector3 {
                     x: lin_ax as f64,
                     y: lin_ay as f64,
                     z: lin_az as f64,
                 },
-                // datasheet 6.7 Performance Characteristics says linear acceleration error is 0.35 m/s^2
-                // so the variance is 0.1225
-                linear_acceleration_covariance: [
-                    0.1225, 0.0, 0.0, // x axis
-                    0.0, 0.1225, 0.0, // y axis
-                    0.0, 0.0, 0.1225, // z axis
-                ],
+                linear_acceleration_covariance,
             };
 
             let buf = ZBytes::from(serde_cdr::serialize(&msg).unwrap());
