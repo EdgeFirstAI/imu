@@ -15,7 +15,12 @@ use bno08x_rs::{
 };
 use clap::Parser;
 use driver::Driver;
-use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cdr, std_msgs};
+use edgefirst_schemas::{
+    builtin_interfaces::{self, Time},
+    geometry_msgs::{self, Quaternion, Transform, TransformStamped, Vector3},
+    sensor_msgs, serde_cdr,
+    std_msgs::{self, Header},
+};
 use log::{debug, error, info, trace, warn};
 use std::{
     rc::Rc,
@@ -135,6 +140,16 @@ fn main() {
     }
 
     let session = zenoh::open(args.clone()).wait().unwrap();
+
+    let tf_session = session.clone();
+    let tf_msg = build_tf_msg(&args);
+    let tf_msg = ZBytes::from(serde_cdr::serialize(&tf_msg).unwrap());
+    let tf_enc = Encoding::APPLICATION_CDR.with_schema("geometry_msgs/msg/TransformStamped");
+    let _ = std::thread::Builder::new()
+        .name("tf_static_thread".to_string())
+        .spawn(move || tf_static(tf_session, tf_msg, tf_enc))
+        .unwrap();
+
     let (send_report_tx, send_report_rx) = std::sync::mpsc::sync_channel(5);
     let args_ = args.clone();
     std::thread::Builder::new()
@@ -402,4 +417,52 @@ fn run_imu(args: Args, send_report_tx: SyncSender<Report>) -> Duration {
     };
 
     handle.join().expect("panicked when joining IMU thread")
+}
+
+fn tf_static(session: Session, msg: ZBytes, enc: Encoding) -> Result<(), String> {
+    let topic = "rt/tf_static".to_string();
+    let interval = Duration::from_secs(1);
+    let mut next_tick = Instant::now();
+    loop {
+        next_tick += interval;
+        session
+            .put(&topic, msg.clone())
+            .encoding(enc.clone())
+            .wait()
+            .map_err(|e| format!("Failed to publish TF message: {:?}", e))?;
+        std::thread::sleep(
+            next_tick
+                .checked_duration_since(Instant::now())
+                .unwrap_or_default(),
+        );
+    }
+}
+
+fn build_tf_msg(args: &Args) -> TransformStamped {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(Duration::from_nanos(0));
+    TransformStamped {
+        header: Header {
+            frame_id: args.base_frame_id.clone(),
+            stamp: Time {
+                sec: time.as_secs() as i32,
+                nanosec: time.subsec_nanos(),
+            },
+        },
+        child_frame_id: args.imu_frame_id.clone(),
+        transform: Transform {
+            translation: Vector3 {
+                x: args.imu_tf_vec[0],
+                y: args.imu_tf_vec[1],
+                z: args.imu_tf_vec[2],
+            },
+            rotation: Quaternion {
+                x: args.imu_tf_quat[0],
+                y: args.imu_tf_quat[1],
+                z: args.imu_tf_quat[2],
+                w: args.imu_tf_quat[3],
+            },
+        },
+    }
 }

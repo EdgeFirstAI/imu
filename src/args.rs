@@ -89,9 +89,37 @@ pub struct Args {
     #[arg(long)]
     pub configure: bool,
 
-    /// ros topic.
+    /// ROS topic.
     #[arg(long, default_value = "rt/imu")]
     pub topic: String,
+
+    /// IMU frame transform vector from base_link, given as 'x y z'
+    #[arg(
+        long,
+        env,
+        default_value = "0 0 0",
+        value_delimiter = ' ',
+        num_args = 3
+    )]
+    pub imu_tf_vec: Vec<f64>,
+
+    /// IMU frame transform quaternion from base_link, given as 'x y z w'
+    #[arg(
+        long,
+        env,
+        default_value = "0 0 0 1",
+        value_delimiter = ' ',
+        num_args = 4
+    )]
+    pub imu_tf_quat: Vec<f64>,
+
+    /// The name of the base frame
+    #[arg(long, default_value = "base_link")]
+    pub base_frame_id: String,
+
+    /// ROS frame id to publish messages with.
+    #[arg(long, default_value = "imu_link")]
+    pub imu_frame_id: String,
 
     /// Application log level
     #[arg(long, env = "RUST_LOG", default_value = "info")]
