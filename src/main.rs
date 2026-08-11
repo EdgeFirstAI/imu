@@ -11,19 +11,27 @@ use bno08x_rs::{
         spidev::SpiDevice,
         SpiInterface,
     },
-    BNO08x, SENSOR_REPORTID_ROTATION_VECTOR,
+    BNO08x,
 };
 use clap::Parser;
 use driver::Driver;
-use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cdr, std_msgs};
+use edgefirst_schemas::{
+    builtin_interfaces::{self, Time},
+    geometry_msgs::{self, Quaternion, Transform, TransformStamped, Vector3},
+    sensor_msgs, serde_cdr,
+    std_msgs::{self, Header},
+};
 use log::{debug, error, info, trace, warn};
 use std::{
+    rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        mpsc::SyncSender,
+        Mutex,
     },
-    time::{Duration, Instant, SystemTime, SystemTimeError, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTimeError},
 };
+use thread_priority::ThreadPriority;
 
 /// Global shutdown flag for graceful termination.
 /// This is critical for coverage instrumentation - LLVM uses atexit() handlers
@@ -121,11 +129,37 @@ fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     tracing_log::LogTracer::init().unwrap();
 
+    let primary_update_us = match args.primary_sensor {
+        args::PrimarySensor::RotationVector => args.update_rot_us,
+        args::PrimarySensor::Accelerometer => args.update_accel_us,
+        args::PrimarySensor::Gyroscope => args.update_gyro_us,
+    };
+    if primary_update_us == 0 {
+        error!("Primary sensor update rate cannot be 0 (disabled)");
+        return;
+    }
+
     let session = zenoh::open(args.clone()).wait().unwrap();
+
+    let tf_session = session.clone();
+    let tf_msg = build_tf_msg(&args);
+    let tf_msg = ZBytes::from(serde_cdr::serialize(&tf_msg).unwrap());
+    let tf_enc = Encoding::APPLICATION_CDR.with_schema("geometry_msgs/msg/TransformStamped");
+    let _ = std::thread::Builder::new()
+        .name("tf_static_thread".to_string())
+        .spawn(move || tf_static(tf_session, tf_msg, tf_enc))
+        .unwrap();
+
+    let (send_report_tx, send_report_rx) = std::sync::mpsc::sync_channel(5);
+    let args_ = args.clone();
+    std::thread::Builder::new()
+        .name("imu_reports_thread".to_string())
+        .spawn(move || send_reports(session, send_report_rx, args_))
+        .unwrap();
 
     let mut consecutive_fail_count = 0;
     while consecutive_fail_count < 3 && !SHUTDOWN.load(Ordering::SeqCst) {
-        let elapsed = run_imu(&args, session.clone());
+        let elapsed = run_imu(args.clone(), send_report_tx.clone());
         // considered a success if the IMU runs for more than the time limit
         if elapsed > SUCCESS_TIME_LIMIT {
             consecutive_fail_count = 0;
@@ -144,153 +178,291 @@ fn main() {
     }
 }
 
-// This function will reset and initialize the IMU, enable reports, and send
-// messages. If no message has been sent for while, the function will return.
-// The function returns total elapsed duration
-fn run_imu(args: &Args, session: Session) -> Duration {
-    let fail_time_limit = Duration::from_millis(args.timeout);
-    // Initializing the driver interface.
-    debug!("Initializing driver wrapper with parameters:");
-    debug!(
-        "device: {} interrupt: {} reset: {}",
-        args.device, args.interrupt, args.reset
-    );
+struct Report {
+    rot_qat: [f32; 4],
+    lin_accel: [f32; 3],
+    gryo: [f32; 3],
+    timestamp: u128,
+}
 
-    let mut driver = driver::Driver::new(&args.device, &args.interrupt, &args.reset);
-    if let Err(e) = driver.imu_driver.init() {
-        error!("Could not initialize driver: {:?}", e);
-        return Duration::from_nanos(0);
-    }
-    if let Err(e) = driver.enable_reports() {
-        error!("Could not initialize reports: {:?}", e);
-        return Duration::from_nanos(0);
-    }
-
-    info!("IMU Device Initialized");
-
-    let last_send = Arc::from(Mutex::from((Instant::now(), false)));
-    let last_send_ = last_send.clone();
-    let report_update_cb =
-        move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
-            info_span!("publish").in_scope(|| {
-                let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
-                let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
-                let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
-
-                trace!("Pose:   x: {}, y: {}, z: {}, w: {}", qi, qj, qk, qr);
-                trace!(
-                    "Accel:  x: {}, y: {}, z: {} [m/s^2]",
-                    lin_ax,
-                    lin_ay,
-                    lin_az
-                );
-                trace!(
-                    "Gryo:   x: {}, y: {}, z: {} [rad/s] \n",
-                    ang_ax,
-                    ang_ay,
-                    ang_az
-                );
-
-                let stamp = match timestamp() {
-                    Ok(t) => t,
-                    Err(TimestampError::Overflow) => {
-                        warn!("Timestamp overflow: seconds exceed i32::MAX, saturating");
-                        builtin_interfaces::Time {
-                            sec: i32::MAX,
-                            nanosec: 999_999_999,
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to get timestamp: {}", e);
-                        return;
-                    }
-                };
-
-                let msg = sensor_msgs::IMU {
-                    header: std_msgs::Header {
-                        stamp,
-                        frame_id: "".to_owned(),
-                    },
-                    orientation: geometry_msgs::Quaternion {
-                        x: qi as f64,
-                        y: qj as f64,
-                        z: qk as f64,
-                        w: qr as f64,
-                    },
-                    orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    angular_velocity: geometry_msgs::Vector3 {
-                        x: ang_ax as f64,
-                        y: ang_ay as f64,
-                        z: ang_az as f64,
-                    },
-                    angular_velocity_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    linear_acceleration: geometry_msgs::Vector3 {
-                        x: lin_ax as f64,
-                        y: lin_ay as f64,
-                        z: lin_az as f64,
-                    },
-                    linear_acceleration_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                };
-
-                let buf = ZBytes::from(serde_cdr::serialize(&msg).unwrap());
-                let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
-
-                session.put(&args.topic, buf).encoding(enc).wait().unwrap();
-                let mut last_send_locked = last_send.lock().unwrap();
-                *(last_send_locked) = (Instant::now(), true);
-            });
-
-            args.tracy.then(frame_mark);
-        };
-
-    driver.imu_driver.add_sensor_report_callback(
-        SENSOR_REPORTID_ROTATION_VECTOR,
-        String::from("report_update_cb"),
-        report_update_cb,
-    );
-    let start = Instant::now();
-    loop {
-        // Check for shutdown signal
-        if SHUTDOWN.load(Ordering::SeqCst) {
-            info!("Shutdown signal received in run_imu loop");
-            return start.elapsed();
+impl Report {
+    fn new(rot_qat: [f32; 4], lin_accel: [f32; 3], gryo: [f32; 3], timestamp: u128) -> Self {
+        Self {
+            rot_qat,
+            lin_accel,
+            gryo,
+            timestamp,
         }
-
-        let _msg_count = driver.imu_driver.handle_messages(2, 10);
-        let lock = last_send_.lock().unwrap();
-        let last_msg_time = lock.0;
-        let started = lock.1;
-        let elapsed = last_msg_time.elapsed();
-
-        let time_limit = if started {
-            fail_time_limit
-        } else {
-            // 5x higher time limit for reading the first message
-            fail_time_limit * 5
-        };
-
-        if elapsed > time_limit {
-            error!("Last message was sent {:?} ago. Resetting IMU...", elapsed);
-            return start.elapsed();
-        }
-        // Don't need to sleep in this loop because handle_messages uses a sleep
-        // for the message polling, so if there is no message the
-        // handle_messages function will sleep the thread
     }
 }
 
-fn timestamp() -> Result<builtin_interfaces::Time, TimestampError> {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(TimestampError::BeforeEpoch)?;
+fn send_reports(session: Session, recv: std::sync::mpsc::Receiver<Report>, args: Args) {
+    for report in recv {
+        info_span!("publish").in_scope(|| {
+            let Report {
+                rot_qat,
+                lin_accel,
+                gryo,
+                timestamp,
+            } = report;
 
-    let secs = duration.as_secs();
-    if secs > i32::MAX as u64 {
-        return Err(TimestampError::Overflow);
+            let [qi, qj, qk, qr] = rot_qat;
+            let [lin_ax, lin_ay, lin_az] = lin_accel;
+            let [ang_ax, ang_ay, ang_az] = gryo;
+
+            trace!("Pose:   x: {}, y: {}, z: {}, w: {}", qi, qj, qk, qr);
+            trace!(
+                "Accel:  x: {}, y: {}, z: {} [m/s^2]",
+                lin_ax,
+                lin_ay,
+                lin_az
+            );
+            trace!(
+                "gryo:   x: {}, y: {}, z: {} [rad/s] \n",
+                ang_ax,
+                ang_ay,
+                ang_az
+            );
+
+            let stamp = if timestamp / 1_000_000_000 > i32::MAX as u128 {
+                warn!("Timestamp overflow: seconds exceed i32::MAX, saturating");
+                builtin_interfaces::Time {
+                    sec: i32::MAX,
+                    nanosec: 999_999_999,
+                }
+            } else {
+                builtin_interfaces::Time {
+                    sec: (timestamp / 1_000_000_000) as i32,
+                    nanosec: (timestamp % 1_000_000_000) as u32,
+                }
+            };
+
+            // ROS REP 145: If a data field is unreported, the first element (0) of the covariance matrix should be set to -1
+            const UNREPORTED_COVARIANCE: [f64; 9] = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+
+            // datasheet 6.7 Performance Characteristics says Rotation Vector error is 3.5 degrees, which is about 0.0611 radians
+            // so the variance is 0.00373. It also mentions that in practice the yaw axis (Z) has a higher variance of 5 degrees
+            let orientation_covariance = if args.update_rot_us > 0 {
+                [
+                    0.00373, 0.0, 0.0, // x axis
+                    0.0, 0.00373, 0.0, // y axis
+                    0.0, 0.0, 0.00593, // z axis (higher variance for yaw)
+                ]
+            } else {
+                UNREPORTED_COVARIANCE
+            };
+
+            // datasheet 6.7 Performance Characteristics says gryo error is 3.1 degrees/s, which is about 0.0541 radians/s
+            // so the variance is 0.00293
+            let angular_velocity_covariance = if args.update_gyro_us > 0 {
+                [
+                    0.00293, 0.0, 0.0, // x axis
+                    0.0, 0.00293, 0.0, // y axis
+                    0.0, 0.0, 0.00293, // z axis
+                ]
+            } else {
+                UNREPORTED_COVARIANCE
+            };
+
+            // datasheet 6.7 Performance Characteristics says linear acceleration error is 0.35 m/s^2
+            // so the variance is 0.1225
+            let linear_acceleration_covariance = if args.update_accel_us > 0 {
+                [
+                    0.1225, 0.0, 0.0, // x axis
+                    0.0, 0.1225, 0.0, // y axis
+                    0.0, 0.0, 0.1225, // z axis
+                ]
+            } else {
+                UNREPORTED_COVARIANCE
+            };
+
+            // TODO: measure the actual offset from the camera module (base_link)
+            // to the imu and set the frame_id and tf_static accordingly
+            let msg = sensor_msgs::IMU {
+                header: std_msgs::Header {
+                    stamp,
+                    frame_id: "base_link".to_owned(),
+                },
+                orientation: geometry_msgs::Quaternion {
+                    x: qi as f64,
+                    y: qj as f64,
+                    z: qk as f64,
+                    w: qr as f64,
+                },
+                orientation_covariance,
+                angular_velocity: geometry_msgs::Vector3 {
+                    x: ang_ax as f64,
+                    y: ang_ay as f64,
+                    z: ang_az as f64,
+                },
+                angular_velocity_covariance,
+                linear_acceleration: geometry_msgs::Vector3 {
+                    x: lin_ax as f64,
+                    y: lin_ay as f64,
+                    z: lin_az as f64,
+                },
+                linear_acceleration_covariance,
+            };
+
+            let buf = ZBytes::from(serde_cdr::serialize(&msg).unwrap());
+            let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
+
+            session.put(&args.topic, buf).encoding(enc).wait().unwrap();
+        });
+
+        args.tracy.then(frame_mark);
     }
+}
 
-    Ok(builtin_interfaces::Time {
-        sec: secs as i32,
-        nanosec: duration.subsec_nanos(),
-    })
+// This function will reset and initialize the IMU, enable reports, and send
+// messages. If no message has been sent for while, the function will return.
+// The function returns total elapsed duration
+// The function will try to set the IMU thread to maximum priority to ensure timely processing of IMU messages
+fn run_imu(args: Args, send_report_tx: SyncSender<Report>) -> Duration {
+    let handle = thread_priority::ThreadBuilder::default()
+        .name("IMU Thread")
+        .priority(ThreadPriority::Max)
+        .spawn(move |res| {
+            if let Err(e) = res {
+                warn!("Failed to set thread priority: {:?}", e);
+            }
+
+            let fail_time_limit = Duration::from_millis(args.timeout);
+            // Initializing the driver interface.
+            debug!("Initializing driver wrapper with parameters:");
+            debug!(
+                "device: {} interrupt: {} reset: {}",
+                args.device, args.interrupt, args.reset
+            );
+
+            let mut driver = driver::Driver::new(&args.device, &args.interrupt, &args.reset);
+            if let Err(e) = driver.imu_driver.init() {
+                error!("Could not initialize driver: {:?}", e);
+                return Duration::from_nanos(0);
+            }
+            if let Err(e) = driver.enable_reports(&args) {
+                error!("Could not initialize reports: {:?}", e);
+                return Duration::from_nanos(0);
+            }
+
+            info!("IMU Device Initialized");
+
+            let last_send = Rc::from(Mutex::from((Instant::now(), false)));
+            let last_send_ = last_send.clone();
+
+            let primary_sensor_id = args.primary_sensor.to_sensor_id();
+
+            let report_update_cb = move |imu_driver: &BNO08x<
+                SpiInterface<SpiDevice, GpiodIn, GpiodOut>,
+            >| {
+                // unwraps are safe because these functions cannot fail
+                let rot_qat = imu_driver.rotation_quaternion().unwrap();
+                let lin_accel = imu_driver.accelerometer().unwrap();
+                let gryo = imu_driver.gyro().unwrap();
+                let timestamp = imu_driver.report_update_time(primary_sensor_id);
+
+                match send_report_tx.try_send(Report::new(rot_qat, lin_accel, gryo, timestamp)) {
+                    Ok(_) => {}
+                    Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                        warn!("Report channel full, over 5 messages queued, dropping message");
+                    }
+                    Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                        panic!("Sending thread failed");
+                    }
+                }
+                let mut last_send_locked = last_send.lock().unwrap();
+                *(last_send_locked) = (Instant::now(), true);
+            };
+
+            driver.imu_driver.add_sensor_report_callback(
+                primary_sensor_id,
+                String::from("report_update_cb"),
+                report_update_cb,
+            );
+
+            let start = Instant::now();
+            loop {
+                // Check for shutdown signal
+                if SHUTDOWN.load(Ordering::SeqCst) {
+                    info!("Shutdown signal received in run_imu loop");
+                    return start.elapsed();
+                }
+
+                let _msg_count = driver.imu_driver.handle_messages(2, 10);
+                let lock = last_send_.lock().unwrap();
+                let last_msg_time = lock.0;
+                let started = lock.1;
+                let elapsed = last_msg_time.elapsed();
+
+                let time_limit = if started {
+                    fail_time_limit
+                } else {
+                    // 5x higher time limit for reading the first message
+                    fail_time_limit * 5
+                };
+
+                if elapsed > time_limit {
+                    error!("Last message was sent {:?} ago. Resetting IMU...", elapsed);
+                    return start.elapsed();
+                }
+                // Don't need to sleep in this loop because handle_messages uses a sleep
+                // for the message polling, so if there is no message the
+                // handle_messages function will sleep the thread
+            }
+        });
+
+    let Ok(handle) = handle else {
+        error!("Failed to spawn IMU thread");
+        return Duration::from_nanos(0);
+    };
+
+    handle.join().expect("panicked when joining IMU thread")
+}
+
+fn tf_static(session: Session, msg: ZBytes, enc: Encoding) -> Result<(), String> {
+    let topic = "rt/tf_static".to_string();
+    let interval = Duration::from_secs(1);
+    let mut next_tick = Instant::now();
+    loop {
+        next_tick += interval;
+        session
+            .put(&topic, msg.clone())
+            .encoding(enc.clone())
+            .wait()
+            .map_err(|e| format!("Failed to publish TF message: {:?}", e))?;
+        std::thread::sleep(
+            next_tick
+                .checked_duration_since(Instant::now())
+                .unwrap_or_default(),
+        );
+    }
+}
+
+fn build_tf_msg(args: &Args) -> TransformStamped {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(Duration::from_nanos(0));
+    TransformStamped {
+        header: Header {
+            frame_id: args.base_frame_id.clone(),
+            stamp: Time {
+                sec: time.as_secs() as i32,
+                nanosec: time.subsec_nanos(),
+            },
+        },
+        child_frame_id: args.imu_frame_id.clone(),
+        transform: Transform {
+            translation: Vector3 {
+                x: args.imu_tf_vec[0],
+                y: args.imu_tf_vec[1],
+                z: args.imu_tf_vec[2],
+            },
+            rotation: Quaternion {
+                x: args.imu_tf_quat[0],
+                y: args.imu_tf_quat[1],
+                z: args.imu_tf_quat[2],
+                w: args.imu_tf_quat[3],
+            },
+        },
+    }
 }
