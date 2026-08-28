@@ -11,7 +11,7 @@
 # Runner Notes:
 # - ubuntu-22.04: Standard GitHub-hosted runner (x86_64)
 # - ubuntu-22.04-arm: GitHub-hosted ARM runner (aarch64)
-# - raivin: Self-hosted hardware runner with BNO08x IMU
+# - raivin: Self-hosted hardware runner with BNO08x IMU (currently disabled)
 
 name: Test
 
@@ -194,6 +194,8 @@ jobs:
     name: Hardware Integration Tests
     needs: test
     runs-on: raivin
+    # Disabled: raivin self-hosted runner is unavailable.
+    if: false
 
 
     steps:
@@ -412,11 +414,10 @@ jobs:
     name: SonarCloud Analysis
     runs-on: ubuntu-22.04
     needs: [test, hardware-test, process-hardware-coverage]
-    # Run if unit and hardware tests succeeded (not forks - they lack secrets)
+    # Run if unit tests succeeded, even if hardware tests were skipped (not forks)
     if: |
       always() &&
       needs.test.result == 'success' &&
-      needs.hardware-test.result == 'success' &&
       (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
