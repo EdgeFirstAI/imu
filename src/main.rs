@@ -206,7 +206,7 @@ fn run_imu(args: &Args, session: Session) -> Duration {
                     }
                 };
 
-                let msg = Imu::builder()
+                let msg = match Imu::builder()
                     .stamp(stamp)
                     .frame_id("")
                     .orientation(geometry_msgs::Quaternion {
@@ -229,7 +229,13 @@ fn run_imu(args: &Args, session: Session) -> Duration {
                     })
                     .linear_acceleration_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
                     .build()
-                    .expect("valid Imu");
+                {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        warn!("Failed to encode Imu: {e}");
+                        return;
+                    }
+                };
 
                 let buf = ZBytes::from(msg.into_cdr());
                 let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");

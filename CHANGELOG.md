@@ -11,8 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Upgrade `edgefirst-schemas` 1.5.1 → 4.0.0. IMU messages are built with
   `Imu::builder()` and encoded via `into_cdr()`; `serde_cdr` is removed.
-  Package version is 3.2.0.
-- Refresh remaining crates (zenoh 1.10, clap 4.6, Tracy 0.12/0.19).
 
 ## [3.1.0] - 2026-03-23
 

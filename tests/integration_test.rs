@@ -145,7 +145,8 @@ fn test_imu_publishing() {
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::SystemTime::UNIX_EPOCH)
                         .unwrap();
-                    let stamp_secs = imu.stamp().sec as u64;
+                    let stamp_secs =
+                        u64::try_from(imu.stamp().sec).expect("IMU stamp.sec is negative");
                     let now_secs = now.as_secs();
                     assert!(
                         now_secs.abs_diff(stamp_secs) < 5,
