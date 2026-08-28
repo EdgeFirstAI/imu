@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Set the Zenoh session namespace to the system hostname and publish on
+  `imu` instead of `rt/imu`. Wire keys are `{hostname}/imu` (EDGEAI-1396).
 - Upgrade `edgefirst-schemas` 1.5.1 → 4.0.0. IMU messages are built with
   `Imu::builder()` and encoded via `into_cdr()`; `serde_cdr` is removed.
 

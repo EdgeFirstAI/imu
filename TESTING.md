@@ -93,7 +93,7 @@ The integration tests in `tests/integration_test.rs` verify:
 ### `test_imu_publishing`
 
 - Starts the `edgefirst-imu` service
-- Subscribes to the `rt/imu` Zenoh topic
+- Subscribes to the `{hostname}/imu` Zenoh wire key
 - Collects messages for 5 seconds
 - Validates quaternion normalization (magnitude ≈ 1.0)
 - Verifies message rate ≥ 50 Hz
@@ -143,7 +143,7 @@ edgefirst-imu
 edgefirst-imu --device /dev/spidev1.0 --interrupt IMU_INT --reset IMU_RST
 
 # With custom Zenoh topic
-edgefirst-imu --topic rt/imu
+edgefirst-imu --topic imu
 
 # Enable Tracy profiling
 edgefirst-imu --tracy
@@ -158,13 +158,13 @@ Use a Zenoh subscriber to verify IMU messages:
 cargo install zenoh
 
 # Subscribe to IMU topic
-z_sub -k "rt/imu"
+z_sub -k "*/imu"
 ```
 
 Or use the EdgeFirst CLI:
 
 ```bash
-edgefirst-client subscribe rt/imu --format json
+edgefirst-client subscribe imu --format json
 ```
 
 ### Running Integration Tests Manually

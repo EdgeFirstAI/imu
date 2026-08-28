@@ -89,7 +89,7 @@ pub struct IMU {
 ```
 BNO08x Sensor → SPI Interface → Driver → CDR Serialization → Zenoh Publisher
      ↓              ↓            ↓              ↓                  ↓
-  Hardware      /dev/spidevX   Fusion      IMU Message        rt/imu topic
+  Hardware      /dev/spidevX   Fusion      IMU Message        imu topic
   Reports       GPIO IRQ/RST   Processing   Creation          Distribution
 ```
 

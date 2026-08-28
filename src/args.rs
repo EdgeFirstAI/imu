@@ -16,7 +16,7 @@ use zenoh::config::{Config, WhatAmI};
 ///
 /// ```bash
 /// # Via command line
-/// edgefirst-imu --timeout 200 --topic rt/imu
+/// edgefirst-imu --timeout 200 --topic imu
 ///
 /// # Via environment variables
 /// export TIMEOUT=200
@@ -47,8 +47,9 @@ pub struct Args {
     #[arg(long)]
     pub configure: bool,
 
-    /// ros topic.
-    #[arg(long, default_value = "rt/imu")]
+    /// Zenoh key expression for IMU messages (sensor_msgs/Imu).
+    /// The session namespace prefixes this with `{hostname}/` on the wire.
+    #[arg(long, default_value = "imu")]
     pub topic: String,
 
     /// Application log level
@@ -76,9 +77,33 @@ pub struct Args {
     no_multicast_scouting: bool,
 }
 
+/// System hostname used as the Zenoh session namespace.
+///
+/// Empty or `/`-containing hostnames would create unintended sub-keys, so we
+/// fall back to `"localhost"` and warn. Two devices both falling back would
+/// silently share a namespace; that is a deployment defect.
+fn zenoh_namespace() -> String {
+    let raw = gethostname::gethostname().to_string_lossy().into_owned();
+    if raw.is_empty() || raw.contains('/') {
+        tracing::warn!(
+            hostname = %raw,
+            "system hostname is empty or contains '/' — falling back to \"localhost\""
+        );
+        "localhost".into()
+    } else {
+        raw
+    }
+}
+
 impl From<Args> for Config {
     fn from(args: Args) -> Self {
         let mut config = Config::default();
+
+        // Session namespace = hostname: application keys are bare (`imu`)
+        // and the wire form is `{hostname}/imu`.
+        config
+            .insert_json5("namespace", &json!(zenoh_namespace()).to_string())
+            .unwrap();
 
         config
             .insert_json5("mode", &json!(args.mode).to_string())
@@ -109,5 +134,32 @@ impl From<Args> for Config {
             .unwrap();
 
         config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn zenoh_config_sets_namespace() {
+        let args = Args::parse_from(["edgefirst-imu"]);
+        let cfg = Config::from(args);
+        let ns: String = serde_json::from_str(&cfg.to_string())
+            .ok()
+            .and_then(|v: serde_json::Value| {
+                v.pointer("/namespace")
+                    .and_then(|n| n.as_str().map(String::from))
+            })
+            .expect("namespace should be set in config");
+        assert!(!ns.is_empty(), "namespace should be non-empty");
+        assert!(!ns.contains('/'), "namespace must not contain '/'");
+    }
+
+    #[test]
+    fn default_topic_has_no_rt_prefix() {
+        let args = Args::parse_from(["edgefirst-imu"]);
+        assert_eq!(args.topic, "imu");
     }
 }

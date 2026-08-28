@@ -29,8 +29,17 @@ const MIN_EXPECTED_RATE_HZ: f64 = 50.0;
 /// Duration to collect IMU messages before analyzing.
 const COLLECTION_DURATION: Duration = Duration::from_secs(5);
 
-/// Topic the IMU service publishes to.
-const IMU_TOPIC: &str = "rt/imu";
+/// Wire key the IMU service publishes to (`{hostname}/imu`).
+/// The subscriber session has no namespace, so it must use the prefixed key.
+fn imu_wire_topic() -> String {
+    let raw = gethostname::gethostname().to_string_lossy().into_owned();
+    let host = if raw.is_empty() || raw.contains('/') {
+        "localhost".to_owned()
+    } else {
+        raw
+    };
+    format!("{host}/imu")
+}
 
 /// Find the edgefirst-imu binary.
 /// In CI, it's passed via environment variable. Locally, look in target directory.
@@ -127,7 +136,7 @@ fn test_imu_publishing() {
     let message_count_clone = message_count.clone();
 
     let subscriber = session
-        .declare_subscriber(IMU_TOPIC)
+        .declare_subscriber(imu_wire_topic())
         .callback(move |sample| {
             // Try to decode the message
             match Imu::from_cdr(sample.payload().to_bytes().to_vec()) {
