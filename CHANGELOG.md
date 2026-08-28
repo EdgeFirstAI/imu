@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Upgrade `edgefirst-schemas` 1.5.1 → 4.0.0. IMU messages are built with
+  `Imu::builder()` and encoded via `into_cdr()`; `serde_cdr` is removed.
+
 ## [3.1.0] - 2026-03-23
 
 ### Fixed

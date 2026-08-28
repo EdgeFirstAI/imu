@@ -9,7 +9,7 @@
 //! The test launches the edgefirst-imu service, subscribes to the IMU topic,
 //! verifies messages are received and decodable, then sends SIGTERM for graceful shutdown.
 
-use edgefirst_schemas::{sensor_msgs::IMU, serde_cdr};
+use edgefirst_schemas::sensor_msgs::Imu;
 use std::{
     env,
     process::{Child, Command},
@@ -130,21 +130,23 @@ fn test_imu_publishing() {
         .declare_subscriber(IMU_TOPIC)
         .callback(move |sample| {
             // Try to decode the message
-            match serde_cdr::deserialize::<IMU>(&sample.payload().to_bytes()) {
+            match Imu::from_cdr(sample.payload().to_bytes().to_vec()) {
                 Ok(imu) => {
                     // Verify the message has reasonable values
                     // Quaternion should be normalized (magnitude ~= 1)
-                    let mag = (imu.orientation.x.powi(2)
-                        + imu.orientation.y.powi(2)
-                        + imu.orientation.z.powi(2)
-                        + imu.orientation.w.powi(2))
+                    let orientation = imu.orientation();
+                    let mag = (orientation.x.powi(2)
+                        + orientation.y.powi(2)
+                        + orientation.z.powi(2)
+                        + orientation.w.powi(2))
                     .sqrt();
 
                     // Verify timestamp is close to wall time
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::SystemTime::UNIX_EPOCH)
                         .unwrap();
-                    let stamp_secs = imu.header.stamp.sec as u64;
+                    let stamp_secs =
+                        u64::try_from(imu.stamp().sec).expect("IMU stamp.sec is negative");
                     let now_secs = now.as_secs();
                     assert!(
                         now_secs.abs_diff(stamp_secs) < 5,

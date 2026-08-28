@@ -15,7 +15,7 @@ use bno08x_rs::{
 };
 use clap::Parser;
 use driver::Driver;
-use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs, serde_cdr, std_msgs};
+use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs::Imu};
 use log::{debug, error, info, trace, warn};
 use std::{
     sync::{
@@ -206,33 +206,38 @@ fn run_imu(args: &Args, session: Session) -> Duration {
                     }
                 };
 
-                let msg = sensor_msgs::IMU {
-                    header: std_msgs::Header {
-                        stamp,
-                        frame_id: "".to_owned(),
-                    },
-                    orientation: geometry_msgs::Quaternion {
+                let msg = match Imu::builder()
+                    .stamp(stamp)
+                    .frame_id("")
+                    .orientation(geometry_msgs::Quaternion {
                         x: qi as f64,
                         y: qj as f64,
                         z: qk as f64,
                         w: qr as f64,
-                    },
-                    orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    angular_velocity: geometry_msgs::Vector3 {
+                    })
+                    .orientation_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                    .angular_velocity(geometry_msgs::Vector3 {
                         x: ang_ax as f64,
                         y: ang_ay as f64,
                         z: ang_az as f64,
-                    },
-                    angular_velocity_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    linear_acceleration: geometry_msgs::Vector3 {
+                    })
+                    .angular_velocity_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                    .linear_acceleration(geometry_msgs::Vector3 {
                         x: lin_ax as f64,
                         y: lin_ay as f64,
                         z: lin_az as f64,
-                    },
-                    linear_acceleration_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    })
+                    .linear_acceleration_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                    .build()
+                {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        warn!("Failed to encode Imu: {e}");
+                        return;
+                    }
                 };
 
-                let buf = ZBytes::from(serde_cdr::serialize(&msg).unwrap());
+                let buf = ZBytes::from(msg.into_cdr());
                 let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
 
                 session.put(&args.topic, buf).encoding(enc).wait().unwrap();
@@ -293,4 +298,50 @@ fn timestamp() -> Result<builtin_interfaces::Time, TimestampError> {
         sec: secs as i32,
         nanosec: duration.subsec_nanos(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn imu_builder_cdr_roundtrip() {
+        let stamp = builtin_interfaces::Time {
+            sec: 12,
+            nanosec: 34,
+        };
+        let msg = Imu::builder()
+            .stamp(stamp)
+            .frame_id("imu")
+            .orientation(geometry_msgs::Quaternion {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                w: 1.0,
+            })
+            .orientation_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            .angular_velocity(geometry_msgs::Vector3 {
+                x: 0.1,
+                y: 0.2,
+                z: 0.3,
+            })
+            .angular_velocity_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            .linear_acceleration(geometry_msgs::Vector3 {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+            })
+            .linear_acceleration_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            .build()
+            .expect("valid Imu");
+
+        let decoded = Imu::from_cdr(msg.into_cdr()).expect("decode Imu");
+        assert_eq!(decoded.stamp().sec, 12);
+        assert_eq!(decoded.stamp().nanosec, 34);
+        assert_eq!(decoded.frame_id(), "imu");
+        assert_eq!(decoded.orientation().w, 1.0);
+        assert_eq!(decoded.angular_velocity().x, 0.1);
+        assert_eq!(decoded.linear_acceleration().z, 3.0);
+        assert_eq!(decoded.orientation_covariance()[0], -1.0);
+    }
 }
