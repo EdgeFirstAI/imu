@@ -240,7 +240,12 @@ fn run_imu(args: &Args, session: Session) -> Duration {
                 let buf = ZBytes::from(msg.into_cdr());
                 let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
 
-                session.put(&args.topic, buf).encoding(enc).wait().unwrap();
+                session
+                    .put(&args.topic, buf)
+                    .encoding(enc)
+                    .timestamp(session.new_timestamp())
+                    .wait()
+                    .unwrap();
                 let mut last_send_locked = last_send.lock().unwrap();
                 *(last_send_locked) = (Instant::now(), true);
             });
