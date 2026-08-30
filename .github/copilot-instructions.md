@@ -71,7 +71,7 @@ Three source files in `src/`:
 
 - `bno08x-rs` — BNO08x sensor driver (SPI + GPIO via gpiod)
 - `edgefirst-schemas` — CDR serialization and ROS-compatible message types (`sensor_msgs::IMU`)
-- `zenoh` — Pub/sub messaging (messages published to configurable topic, default `rt/imu`)
+- `zenoh` — Pub/sub messaging (messages published to configurable topic, default `imu`)
 - `tracing-tracy` / `tracy-client` — Optional Tracy profiling (feature-gated, enabled by default)
 
 ### Integration Tests
