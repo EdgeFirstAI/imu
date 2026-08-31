@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-08-31
+
 ### Changed
 
 - Attach a Zenoh source timestamp on every `imu` sample so the recorder
@@ -15,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `imu` instead of `rt/imu`. Wire keys are `{hostname}/imu` (EDGEAI-1396).
 - Upgrade `edgefirst-schemas` 1.5.1 → 4.0.0. IMU messages are built with
   `Imu::builder()` and encoded via `into_cdr()`; `serde_cdr` is removed.
+
+### Fixed
+
+- Skip IMU samples that fail CDR encode instead of aborting the publish
+  path (EDGEAI-1422).
 
 ## [3.1.0] - 2026-03-23
 
