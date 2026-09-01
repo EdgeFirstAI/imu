@@ -92,8 +92,16 @@ const SAMPLE_QUEUE_DEPTH: usize = 64;
 
 /// CDR buffers recycled across publications. Zenoh releases a payload once it
 /// has been serialized to the transport, so a handful covers the in-flight
-/// window; the pool grows on its own if that ever proves too few.
+/// window. If every buffer is still in flight the pool allocates a fresh one
+/// to keep publishing, but only this many are retained for reuse, so a value
+/// below the real in-flight depth causes steady allocation rather than
+/// growing the pool.
 const PUBLISH_BUFFERS: usize = 4;
+
+/// Consecutive failed publications before the run is ended so the service can
+/// reset and start over. A single failure is treated as transient; this many
+/// in a row means nothing is reaching the wire.
+const MAX_CONSECUTIVE_PUBLISH_FAILURES: u32 = 10;
 
 /// Upper bound on how long the publisher sleeps on an empty queue. It is
 /// woken as soon as a sample is pushed, so this only bounds how quickly the
@@ -180,6 +188,7 @@ fn publish_loop(args: &Args, session: Session, queue: SharedQueue, stop: Arc<Ato
     // publisher instead would require zenoh's internal builder trait.
     let encoding = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
     let mut pool = BufferPool::new(PUBLISH_BUFFERS);
+    let mut consecutive_failures: u32 = 0;
     queue.set_consumer(std::thread::current());
     debug!(
         "Publishing {} to {} ({} byte messages, {} reusable buffers)",
@@ -201,7 +210,7 @@ fn publish_loop(args: &Args, session: Session, queue: SharedQueue, stop: Arc<Ato
             continue;
         };
 
-        info_span!("publish").in_scope(|| {
+        let published = info_span!("publish").in_scope(|| {
             trace!(
                 "Pose:   x: {}, y: {}, z: {}, w: {}",
                 sample.orientation.x,
@@ -225,20 +234,44 @@ fn publish_loop(args: &Args, session: Session, queue: SharedQueue, stop: Arc<Ato
             let mut buf = pool.acquire();
             if let Err(e) = write_sample(&mut buf, &sample) {
                 warn!("Failed to encode Imu: {}", e);
-                return;
+                return false;
             }
             let payload = buf.freeze();
 
-            match publisher
+            let result = publisher
                 .put(ZBytes::from(payload.clone()))
                 .encoding(encoding.clone())
                 .timestamp(session.new_timestamp())
-                .wait()
-            {
-                Ok(()) => pool.release(payload),
-                Err(e) => warn!("Failed to publish Imu: {}", e),
+                .wait();
+
+            // The buffer goes back to the pool either way. A failed put may
+            // still hold a reference, but the pool only reclaims a buffer
+            // once every other reference is gone, so returning it is safe and
+            // keeps a burst of failures from churning allocations.
+            pool.release(payload);
+
+            match result {
+                Ok(()) => true,
+                Err(e) => {
+                    warn!("Failed to publish Imu: {}", e);
+                    false
+                }
             }
         });
+
+        if published {
+            consecutive_failures = 0;
+        } else {
+            consecutive_failures += 1;
+            if consecutive_failures >= MAX_CONSECUTIVE_PUBLISH_FAILURES {
+                error!(
+                    "{} consecutive publish failures; ending run",
+                    consecutive_failures
+                );
+                stop.store(true, Ordering::SeqCst);
+                break;
+            }
+        }
 
         args.tracy.then(frame_mark);
     }

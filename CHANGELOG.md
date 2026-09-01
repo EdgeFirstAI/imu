@@ -38,7 +38,13 @@ roughly 25 restarts per ten minutes to none.
   blocking the sampling thread; discards are counted and logged when the run
   ends.
 - A run now ends if the publisher thread cannot publish at all, instead of
-  sampling indefinitely with nothing reaching the wire.
+  sampling indefinitely with nothing reaching the wire. This covers both a
+  publisher that cannot be declared and a run of consecutive failed
+  publications.
+- A publish buffer is returned to the pool whether or not the publication
+  succeeded, so a burst of transient failures no longer churns allocations.
+  The pool only ever hands back a buffer once every other reference to it is
+  gone, so this is safe even when a failed send still holds one.
 
 ### Added
 
