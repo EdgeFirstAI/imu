@@ -23,13 +23,19 @@ The IMU service operates as a standalone binary with the following responsibilit
    - Sensor initialization and configuration
    - Rotation vector and sensor data reading
 
-2. **Data Processing**
+2. **Publish Pipeline** (`publisher.rs`)
+   - `ImuSample`: one fixed-size, `Copy` reading handed between threads
+   - `SampleQueue`: lock-free bounded queue, oldest sample discarded when full
+   - `BufferPool`: pre-encoded CDR messages recycled across publications
+   - `write_sample()`: patches the four varying fields of an encoded message in place
+
+3. **Data Processing**
    - Quaternion orientation from rotation vector reports
    - Angular velocity from gyroscope reports
    - Linear acceleration from accelerometer reports
    - Sensor fusion algorithms (performed by BNO08x hardware)
 
-3. **Output Generation**
+4. **Output Generation**
    - CDR-serialized IMU messages via `edgefirst-schemas`
    - Zenoh topic publishing
    - Configurable topic names
@@ -86,12 +92,55 @@ pub struct IMU {
 
 ### Data Flow
 
+Sampling and publishing run on separate threads so that Zenoh latency never
+delays the thread servicing the sensor interrupt. The BNO085/086 times out,
+retries and eventually starves its own processing when the host is slower
+than roughly 1/10 of the fastest report period, so the sensor thread must do
+as little as possible.
+
 ```
-BNO08x Sensor → SPI Interface → Driver → CDR Serialization → Zenoh Publisher
-     ↓              ↓            ↓              ↓                  ↓
-  Hardware      /dev/spidevX   Fusion      IMU Message        imu topic
-  Reports       GPIO IRQ/RST   Processing   Creation          Distribution
+      sampling thread              shared              publish thread
+
+BNO08x → SPI → Driver → ImuSample ──▶ SampleQueue ──▶ patch CDR ──▶ Zenoh
+ reports  IRQ   fusion   (Copy,        (lock-free,     buffer in     imu
+                          no alloc)     drop oldest)   place         topic
 ```
+
+The sensor callback only copies values into the queue. The publish thread
+parks while the queue is empty and is unparked on each push, so it costs no
+CPU between samples and adds no latency to the ones that arrive.
+
+### Buffer Reuse
+
+Zenoh takes ownership of a payload, so a single buffer cannot be mutated and
+republished: the previous publication may still reference it. `BufferPool`
+therefore keeps a few `Bytes` messages and reclaims one with
+`Bytes::try_into_mut`, which succeeds once Zenoh has released its reference.
+
+Each publication:
+
+1. Takes a recycled buffer already holding a valid encoded message.
+2. Overwrites only the stamp, orientation, angular velocity and linear
+   acceleration. The frame ID and the three covariance arrays never change.
+3. Freezes it to `Bytes`, which Zenoh accepts with no copy and no allocation.
+4. Returns it to the pool once the publication has been handed over.
+
+In steady state this recycles a single allocation: a 9-second run at 111 Hz
+published 1016 messages having allocated one buffer.
+
+### Backpressure
+
+The queue holds `SAMPLE_QUEUE_DEPTH` (64) samples, roughly a quarter second
+at the rotation vector rate. If publishing stalls for longer, the oldest
+samples are discarded rather than blocking the sensor thread: consumers care
+about current attitude, not history. Discards are counted and logged when the
+run ends.
+
+### Watchdog
+
+The `--timeout` watchdog measures time since the last sample was *read from
+the sensor*, not since the last message was published. A slow subscriber or a
+stalled network therefore cannot trigger a sensor reset.
 
 ## Performance
 

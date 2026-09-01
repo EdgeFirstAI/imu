@@ -3,6 +3,7 @@
 
 mod args;
 mod driver;
+mod publisher;
 
 use args::Args;
 use bno08x_rs::{
@@ -15,8 +16,9 @@ use bno08x_rs::{
 };
 use clap::Parser;
 use driver::Driver;
-use edgefirst_schemas::{builtin_interfaces, geometry_msgs, sensor_msgs::Imu};
+use edgefirst_schemas::{builtin_interfaces, geometry_msgs};
 use log::{debug, error, info, trace, warn};
+use publisher::{write_sample, BufferPool, ImuSample, SampleQueue, SharedQueue};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -83,6 +85,21 @@ use zenoh::{
 
 const SUCCESS_TIME_LIMIT: Duration = Duration::from_secs(3);
 
+/// Samples buffered between the sampling and publishing threads. At the
+/// 5 ms rotation vector period this absorbs about a quarter second of
+/// publish stall before the oldest samples start being discarded.
+const SAMPLE_QUEUE_DEPTH: usize = 64;
+
+/// CDR buffers recycled across publications. Zenoh releases a payload once it
+/// has been serialized to the transport, so a handful covers the in-flight
+/// window; the pool grows on its own if that ever proves too few.
+const PUBLISH_BUFFERS: usize = 4;
+
+/// Upper bound on how long the publisher sleeps on an empty queue. It is
+/// woken as soon as a sample is pushed, so this only bounds how quickly the
+/// thread notices the stop flag.
+const IDLE_PARK_TIMEOUT: Duration = Duration::from_millis(50);
+
 fn main() {
     // Install signal handlers for graceful shutdown (required for coverage instrumentation)
     install_signal_handlers();
@@ -144,8 +161,104 @@ fn main() {
     }
 }
 
-// This function will reset and initialize the IMU, enable reports, and send
-// messages. If no message has been sent for while, the function will return.
+/// Publish samples from `queue` until `stop` is set and the queue is drained.
+///
+/// Runs on its own thread so that Zenoh latency never delays the thread
+/// servicing the sensor's interrupt line. Each publication patches a recycled
+/// CDR buffer in place rather than encoding and allocating a new message.
+fn publish_loop(args: &Args, session: Session, queue: SharedQueue, stop: Arc<AtomicBool>) {
+    let publisher = match session.declare_publisher(args.topic.clone()).wait() {
+        Ok(publisher) => publisher,
+        Err(e) => {
+            error!("Could not declare publisher for {}: {}", args.topic, e);
+            stop.store(true, Ordering::SeqCst);
+            return;
+        }
+    };
+    // Cloning this per publication is a refcount bump, not an allocation:
+    // Encoding holds its schema in an Arc-backed ZSlice. Setting it on the
+    // publisher instead would require zenoh's internal builder trait.
+    let encoding = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
+    let mut pool = BufferPool::new(PUBLISH_BUFFERS);
+    queue.set_consumer(std::thread::current());
+    debug!(
+        "Publishing {} to {} ({} byte messages, {} reusable buffers)",
+        "sensor_msgs/msg/Imu",
+        args.topic,
+        pool.message_len(),
+        PUBLISH_BUFFERS
+    );
+
+    loop {
+        let Some(sample) = queue.pop() else {
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
+            // Nothing pending: sleep until a sample is pushed. The producer
+            // unparks us, so this costs no CPU between samples and adds no
+            // latency to the ones that arrive.
+            std::thread::park_timeout(IDLE_PARK_TIMEOUT);
+            continue;
+        };
+
+        info_span!("publish").in_scope(|| {
+            trace!(
+                "Pose:   x: {}, y: {}, z: {}, w: {}",
+                sample.orientation.x,
+                sample.orientation.y,
+                sample.orientation.z,
+                sample.orientation.w
+            );
+            trace!(
+                "Accel:  x: {}, y: {}, z: {} [m/s^2]",
+                sample.linear_acceleration.x,
+                sample.linear_acceleration.y,
+                sample.linear_acceleration.z
+            );
+            trace!(
+                "Gyro:   x: {}, y: {}, z: {} [rad/s]",
+                sample.angular_velocity.x,
+                sample.angular_velocity.y,
+                sample.angular_velocity.z
+            );
+
+            let mut buf = pool.acquire();
+            if let Err(e) = write_sample(&mut buf, &sample) {
+                warn!("Failed to encode Imu: {}", e);
+                return;
+            }
+            let payload = buf.freeze();
+
+            match publisher
+                .put(ZBytes::from(payload.clone()))
+                .encoding(encoding.clone())
+                .timestamp(session.new_timestamp())
+                .wait()
+            {
+                Ok(()) => pool.release(payload),
+                Err(e) => warn!("Failed to publish Imu: {}", e),
+            }
+        });
+
+        args.tracy.then(frame_mark);
+    }
+
+    let dropped = queue.dropped();
+    if dropped > 0 {
+        warn!(
+            "Dropped {} sample(s) because the publish queue was full",
+            dropped
+        );
+    }
+    debug!(
+        "Publisher thread exiting ({} buffers allocated)",
+        pool.allocated()
+    );
+}
+
+// This function will reset and initialize the IMU, enable reports, and queue
+// samples for publishing. If the sensor has produced no sample for a while,
+// the function will return.
 // The function returns total elapsed duration
 fn run_imu(args: &Args, session: Session) -> Duration {
     let fail_time_limit = Duration::from_millis(args.timeout);
@@ -168,89 +281,71 @@ fn run_imu(args: &Args, session: Session) -> Duration {
 
     info!("IMU Device Initialized");
 
-    let last_send = Arc::from(Mutex::from((Instant::now(), false)));
-    let last_send_ = last_send.clone();
+    let queue: SharedQueue = Arc::new(SampleQueue::new(SAMPLE_QUEUE_DEPTH));
+    let stop = Arc::new(AtomicBool::new(false));
+    let publisher_thread = {
+        let args = args.clone();
+        let session = session.clone();
+        let queue = queue.clone();
+        let stop = stop.clone();
+        std::thread::Builder::new()
+            .name("imu-publish".into())
+            .spawn(move || publish_loop(&args, session, queue, stop))
+            .expect("spawn publisher thread")
+    };
+
+    // The watchdog tracks samples read from the sensor, not messages put on
+    // the wire: a slow subscriber or a stalled network must not trigger a
+    // sensor reset.
+    let last_sample = Arc::from(Mutex::from((Instant::now(), false)));
+    let last_sample_ = last_sample.clone();
+    let queue_ = queue.clone();
+    // The callback runs on the thread servicing the sensor interrupt, so it
+    // only copies values into the queue: no allocation, no I/O, no lock held
+    // across work.
     let report_update_cb =
         move |imu_driver: &BNO08x<SpiInterface<SpiDevice, GpiodIn, GpiodOut>>| {
-            info_span!("publish").in_scope(|| {
-                let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
-                let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
-                let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
+            let [qi, qj, qk, qr] = imu_driver.rotation_quaternion().unwrap();
+            let [lin_ax, lin_ay, lin_az] = imu_driver.accelerometer().unwrap();
+            let [ang_ax, ang_ay, ang_az] = imu_driver.gyro().unwrap();
 
-                trace!("Pose:   x: {}, y: {}, z: {}, w: {}", qi, qj, qk, qr);
-                trace!(
-                    "Accel:  x: {}, y: {}, z: {} [m/s^2]",
-                    lin_ax,
-                    lin_ay,
-                    lin_az
-                );
-                trace!(
-                    "Gryo:   x: {}, y: {}, z: {} [rad/s] \n",
-                    ang_ax,
-                    ang_ay,
-                    ang_az
-                );
-
-                let stamp = match timestamp() {
-                    Ok(t) => t,
-                    Err(TimestampError::Overflow) => {
-                        warn!("Timestamp overflow: seconds exceed i32::MAX, saturating");
-                        builtin_interfaces::Time {
-                            sec: i32::MAX,
-                            nanosec: 999_999_999,
-                        }
+            let stamp = match timestamp() {
+                Ok(t) => t,
+                Err(TimestampError::Overflow) => {
+                    warn!("Timestamp overflow: seconds exceed i32::MAX, saturating");
+                    builtin_interfaces::Time {
+                        sec: i32::MAX,
+                        nanosec: 999_999_999,
                     }
-                    Err(e) => {
-                        warn!("Failed to get timestamp: {}", e);
-                        return;
-                    }
-                };
+                }
+                Err(e) => {
+                    warn!("Failed to get timestamp: {}", e);
+                    return;
+                }
+            };
 
-                let msg = match Imu::builder()
-                    .stamp(stamp)
-                    .frame_id("")
-                    .orientation(geometry_msgs::Quaternion {
-                        x: qi as f64,
-                        y: qj as f64,
-                        z: qk as f64,
-                        w: qr as f64,
-                    })
-                    .orientation_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-                    .angular_velocity(geometry_msgs::Vector3 {
-                        x: ang_ax as f64,
-                        y: ang_ay as f64,
-                        z: ang_az as f64,
-                    })
-                    .angular_velocity_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-                    .linear_acceleration(geometry_msgs::Vector3 {
-                        x: lin_ax as f64,
-                        y: lin_ay as f64,
-                        z: lin_az as f64,
-                    })
-                    .linear_acceleration_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-                    .build()
-                {
-                    Ok(msg) => msg,
-                    Err(e) => {
-                        warn!("Failed to encode Imu: {e}");
-                        return;
-                    }
-                };
-
-                let buf = ZBytes::from(msg.into_cdr());
-                let enc = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
-
-                session
-                    .put(&args.topic, buf)
-                    .encoding(enc)
-                    .timestamp(session.new_timestamp())
-                    .wait()
-                    .unwrap();
-                let mut last_send_locked = last_send.lock().unwrap();
-                *(last_send_locked) = (Instant::now(), true);
+            queue_.push_overwrite(ImuSample {
+                stamp,
+                orientation: geometry_msgs::Quaternion {
+                    x: qi as f64,
+                    y: qj as f64,
+                    z: qk as f64,
+                    w: qr as f64,
+                },
+                angular_velocity: geometry_msgs::Vector3 {
+                    x: ang_ax as f64,
+                    y: ang_ay as f64,
+                    z: ang_az as f64,
+                },
+                linear_acceleration: geometry_msgs::Vector3 {
+                    x: lin_ax as f64,
+                    y: lin_ay as f64,
+                    z: lin_az as f64,
+                },
             });
 
-            args.tracy.then(frame_mark);
+            let mut last = last_sample_.lock().unwrap();
+            *last = (Instant::now(), true);
         };
 
     driver.imu_driver.add_sensor_report_callback(
@@ -259,18 +354,28 @@ fn run_imu(args: &Args, session: Session) -> Duration {
         report_update_cb,
     );
     let start = Instant::now();
-    loop {
+    let elapsed = loop {
         // Check for shutdown signal
         if SHUTDOWN.load(Ordering::SeqCst) {
             info!("Shutdown signal received in run_imu loop");
-            return start.elapsed();
+            break start.elapsed();
+        }
+
+        // The publisher sets the stop flag if it cannot publish at all (for
+        // example the publisher could not be declared). Sampling without a
+        // consumer is pointless, and the sample watchdog would never fire, so
+        // end the run and let the caller retry.
+        if stop.load(Ordering::SeqCst) {
+            error!("Publisher stopped; ending IMU run");
+            break start.elapsed();
         }
 
         let _msg_count = driver.imu_driver.handle_messages(2, 10);
-        let lock = last_send_.lock().unwrap();
-        let last_msg_time = lock.0;
+        let lock = last_sample.lock().unwrap();
+        let last_sample_time = lock.0;
         let started = lock.1;
-        let elapsed = last_msg_time.elapsed();
+        drop(lock);
+        let elapsed = last_sample_time.elapsed();
 
         let time_limit = if started {
             fail_time_limit
@@ -280,13 +385,23 @@ fn run_imu(args: &Args, session: Session) -> Duration {
         };
 
         if elapsed > time_limit {
-            error!("Last message was sent {:?} ago. Resetting IMU...", elapsed);
-            return start.elapsed();
+            error!("Last sample was read {:?} ago. Resetting IMU...", elapsed);
+            break start.elapsed();
         }
         // Don't need to sleep in this loop because handle_messages uses a sleep
         // for the message polling, so if there is no message the
         // handle_messages function will sleep the thread
+    };
+
+    // Let the publisher drain what is already queued, then join it so the
+    // process can exit cleanly (required for coverage instrumentation).
+    stop.store(true, Ordering::SeqCst);
+    queue.wake_consumer();
+    if let Err(e) = publisher_thread.join() {
+        warn!("Publisher thread panicked: {:?}", e);
     }
+
+    elapsed
 }
 
 fn timestamp() -> Result<builtin_interfaces::Time, TimestampError> {
@@ -308,42 +423,44 @@ fn timestamp() -> Result<builtin_interfaces::Time, TimestampError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use edgefirst_schemas::sensor_msgs::Imu;
 
+    /// The values a sensor callback copies out of the driver must survive
+    /// the queue and the in-place encoding unchanged.
     #[test]
-    fn imu_builder_cdr_roundtrip() {
-        let stamp = builtin_interfaces::Time {
-            sec: 12,
-            nanosec: 34,
-        };
-        let msg = Imu::builder()
-            .stamp(stamp)
-            .frame_id("imu")
-            .orientation(geometry_msgs::Quaternion {
+    fn sample_survives_queue_and_encoding() {
+        let queue = SampleQueue::new(4);
+        queue.push_overwrite(ImuSample {
+            stamp: builtin_interfaces::Time {
+                sec: 12,
+                nanosec: 34,
+            },
+            orientation: geometry_msgs::Quaternion {
                 x: 0.0,
                 y: 0.0,
                 z: 0.0,
                 w: 1.0,
-            })
-            .orientation_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            .angular_velocity(geometry_msgs::Vector3 {
+            },
+            angular_velocity: geometry_msgs::Vector3 {
                 x: 0.1,
                 y: 0.2,
                 z: 0.3,
-            })
-            .angular_velocity_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            .linear_acceleration(geometry_msgs::Vector3 {
+            },
+            linear_acceleration: geometry_msgs::Vector3 {
                 x: 1.0,
                 y: 2.0,
                 z: 3.0,
-            })
-            .linear_acceleration_covariance([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            .build()
-            .expect("valid Imu");
+            },
+        });
 
-        let decoded = Imu::from_cdr(msg.into_cdr()).expect("decode Imu");
+        let sample = queue.pop().expect("queued sample");
+        let mut pool = BufferPool::new(PUBLISH_BUFFERS);
+        let mut buf = pool.acquire();
+        write_sample(&mut buf, &sample).expect("encode sample");
+
+        let decoded = Imu::from_cdr(buf.as_ref()).expect("decode Imu");
         assert_eq!(decoded.stamp().sec, 12);
         assert_eq!(decoded.stamp().nanosec, 34);
-        assert_eq!(decoded.frame_id(), "imu");
         assert_eq!(decoded.orientation().w, 1.0);
         assert_eq!(decoded.angular_velocity().x, 0.1);
         assert_eq!(decoded.linear_acceleration().z, 3.0);

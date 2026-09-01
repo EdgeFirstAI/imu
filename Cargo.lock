@@ -230,9 +230,9 @@ dependencies = [
 
 [[package]]
 name = "bno08x-rs"
-version = "2.0.1"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce3afa55134234682f65f77ca2efdb379d79d539598fb57f5769d082abf707c0"
+checksum = "8ca2b0dd859ddd405b007675a4e1204b8c0831381335be0e451966304db0839f"
 dependencies = [
  "gpiod",
  "log",
@@ -670,10 +670,12 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "edgefirst-imu"
-version = "3.2.0"
+version = "3.3.0"
 dependencies = [
  "bno08x-rs",
+ "bytes",
  "clap",
+ "crossbeam-queue",
  "edgefirst-schemas",
  "gethostname",
  "libc",
