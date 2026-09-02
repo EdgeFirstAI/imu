@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-01
+
+Requires bno08x-rs 3.0.0, which fixes the SPI transport defects behind
+EDGEAI-1100 and EDGEAI-520. On verdin-imx8mp-15141091 the service went from
+roughly 25 restarts per ten minutes to none.
+
+### Changed
+
+- Upgrade `bno08x-rs` 2.0.1 to 3.0.0. The first report is now enabled
+  immediately after `init()` with no sleep in between, because the sensor hub
+  sleeps as soon as its startup packets are drained and cannot be woken over
+  SPI.
+- Sampling and publishing now run on separate threads. The sensor callback
+  only copies a fixed-size sample into a lock-free queue, so Zenoh latency no
+  longer delays servicing the sensor interrupt (which the BNO085/086 penalises
+  by timing out and starving its own processing).
+- IMU messages are published from recycled, pre-encoded CDR buffers. Only the
+  stamp, orientation, angular velocity and linear acceleration are rewritten
+  per sample; the frame ID and covariances are encoded once. Buffers are
+  reclaimed with `Bytes::try_into_mut` and handed to Zenoh with no copy and no
+  allocation, so a steady-state run reuses a single allocation.
+- The Zenoh publisher is declared once at startup instead of calling
+  `session.put()` per message.
+- The `--timeout` watchdog now measures time since the last sample was read
+  from the sensor rather than since the last successful publish, so a slow
+  subscriber or a stalled network can no longer trigger a sensor reset. Tune
+  `TIMEOUT` against sensor behaviour rather than publish latency.
+- When publishing stalls, the oldest queued samples are discarded instead of
+  blocking the sampling thread; discards are counted and logged when the run
+  ends.
+- A run now ends if the publisher thread cannot publish at all, instead of
+  sampling indefinitely with nothing reaching the wire. This covers both a
+  publisher that cannot be declared and a run of consecutive failed
+  publications.
+- A publish buffer is returned to the pool whether or not the publication
+  succeeded, so a burst of transient failures no longer churns allocations.
+  The pool only ever hands back a buffer once every other reference to it is
+  gone, so this is safe even when a failed send still holds one.
+
+### Added
+
+- `bytes` and `crossbeam-queue` dependencies for the publish buffer pool and
+  the sample queue.
+
 ## [3.2.0] - 2026-08-31
 
 ### Changed
@@ -148,7 +192,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rotation vector update rate changed to 33ms
 - Default message timeout set to 165ms
 
-[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/EdgeFirstAI/imu/compare/v3.2.0...v3.3.0
+[3.2.0]: https://github.com/EdgeFirstAI/imu/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/EdgeFirstAI/imu/compare/v3.0.5...v3.1.0
 [3.0.5]: https://github.com/EdgeFirstAI/imu/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/EdgeFirstAI/imu/compare/v3.0.2...v3.0.4
