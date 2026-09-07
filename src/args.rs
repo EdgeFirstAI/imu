@@ -84,6 +84,23 @@ pub struct Args {
 /// default, so scrubbing them to "unset" is exactly the intended meaning.
 pub const KEEP: &[&str] = &[];
 
+/// Names of this program's env-bound arguments whose value, as reported by
+/// `var`, is present but empty and not listed in `keep`.
+///
+/// Pure: the environment is only read through `var`, so this can be unit
+/// tested with a fake lookup and no process-wide mutation.
+pub fn empty_env_vars<C: CommandFactory>(
+    keep: &[&str],
+    var: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    C::command()
+        .get_arguments()
+        .filter_map(|arg| arg.get_env().map(|e| e.to_string_lossy().into_owned()))
+        .filter(|name| !keep.contains(&name.as_str()))
+        .filter(|name| var(name).is_some_and(|v| v.is_empty()))
+        .collect()
+}
+
 /// Treat an empty environment variable as unset, so clap's declared
 /// `default_value` applies instead of failing to parse.
 ///
@@ -95,15 +112,8 @@ pub const KEEP: &[&str] = &[];
 /// Must be called before any thread is spawned. Mutating the process
 /// environment is not thread-safe.
 pub unsafe fn scrub_empty_env<C: CommandFactory>(keep: &[&str]) {
-    for arg in C::command().get_arguments() {
-        let Some(env) = arg.get_env() else { continue };
-        let name = env.to_string_lossy().into_owned();
-        if keep.contains(&name.as_str()) {
-            continue;
-        }
-        if matches!(std::env::var(&name), Ok(v) if v.is_empty()) {
-            std::env::remove_var(&name);
-        }
+    for name in empty_env_vars::<C>(keep, |name| std::env::var(name).ok()) {
+        std::env::remove_var(&name);
     }
 }
 
@@ -171,12 +181,7 @@ impl From<Args> for Config {
 mod tests {
     use super::*;
     use clap::Parser;
-    use std::sync::Mutex;
-
-    /// Serialises tests that read or mutate the process environment. Every
-    /// `Args::parse_from` call reads env-bound variables, so all tests in this
-    /// module must hold the lock.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    use std::collections::HashMap;
 
     /// Env-bound arguments with a non-empty default where we have consciously decided
     /// that an empty value is NOT meaningful (so scrubbing to the default is correct).
@@ -201,49 +206,67 @@ mod tests {
         }
     }
 
+    /// Fake environment lookup so the decision logic is tested without
+    /// touching the process environment.
+    fn lookup(env: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |name| map.get(name).cloned()
+    }
+
     #[test]
-    fn empty_env_vars_are_treated_as_unset() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        const VARS: &[&str] = &["TIMEOUT", "RUST_LOG", "MODE", "NO_MULTICAST_SCOUTING"];
-        let saved: Vec<_> = VARS.iter().map(std::env::var_os).collect();
-        for var in VARS {
-            std::env::set_var(var, "");
-        }
+    fn empty_env_var_is_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[("TIMEOUT", "")]));
+        assert_eq!(found, ["TIMEOUT"]);
+    }
 
-        // Without scrubbing, clap sees "" as present and fails to parse it.
-        assert!(Args::try_parse_from(["edgefirst-imu"]).is_err());
+    #[test]
+    fn non_empty_env_var_is_not_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[("TIMEOUT", "200")]));
+        assert!(found.is_empty(), "{found:?}");
+    }
 
-        // SAFETY: the lock above keeps other tests from reading the environment
-        // concurrently, and this test spawns no threads.
-        unsafe { scrub_empty_env::<Args>(KEEP) };
-        for var in VARS {
-            assert!(std::env::var_os(var).is_none(), "{var} should be removed");
-        }
+    #[test]
+    fn unset_env_var_is_not_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[]));
+        assert!(found.is_empty(), "{found:?}");
+    }
 
-        let args = Args::try_parse_from(["edgefirst-imu"]).expect("defaults should apply");
-        assert_eq!(args.timeout, 165);
-        assert_eq!(args.rust_log, LevelFilter::INFO);
-        assert_eq!(args.mode, WhatAmI::Peer);
-        assert!(!args.no_multicast_scouting);
+    #[test]
+    fn kept_env_var_is_not_listed_even_when_empty() {
+        let found = empty_env_vars::<Args>(&["TIMEOUT"], lookup(&[("TIMEOUT", ""), ("MODE", "")]));
+        assert_eq!(found, ["MODE"]);
+    }
 
-        // Non-empty values and unrelated variables are left alone.
-        std::env::set_var("TIMEOUT", "200");
-        unsafe { scrub_empty_env::<Args>(KEEP) };
-        assert_eq!(std::env::var("TIMEOUT").as_deref(), Ok("200"));
-        let args = Args::try_parse_from(["edgefirst-imu"]).expect("valid value should parse");
-        assert_eq!(args.timeout, 200);
+    #[test]
+    fn unbound_env_var_is_never_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[("UNRELATED_EMPTY_VAR", "")]));
+        assert!(found.is_empty(), "{found:?}");
+    }
 
-        for (var, value) in VARS.iter().zip(saved) {
-            match value {
-                Some(value) => std::env::set_var(var, value),
-                None => std::env::remove_var(var),
-            }
-        }
+    #[test]
+    fn all_empty_env_bound_vars_are_listed() {
+        let mut found = empty_env_vars::<Args>(
+            KEEP,
+            lookup(&[
+                ("TIMEOUT", ""),
+                ("RUST_LOG", ""),
+                ("MODE", ""),
+                ("NO_MULTICAST_SCOUTING", ""),
+                ("TRACY", "1"),
+            ]),
+        );
+        found.sort();
+        assert_eq!(
+            found,
+            ["MODE", "NO_MULTICAST_SCOUTING", "RUST_LOG", "TIMEOUT"]
+        );
     }
 
     #[test]
     fn zenoh_config_sets_namespace() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let args = Args::parse_from(["edgefirst-imu"]);
         let cfg = Config::from(args);
         let ns: String = serde_json::from_str(&cfg.to_string())
@@ -259,7 +282,6 @@ mod tests {
 
     #[test]
     fn default_topic_has_no_rt_prefix() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let args = Args::parse_from(["edgefirst-imu"]);
         assert_eq!(args.topic, "imu");
     }

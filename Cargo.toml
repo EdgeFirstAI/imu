@@ -9,6 +9,10 @@ rust-version = "1.90"
 keywords = ["imu", "bno08x", "zenoh", "robotics", "sensor"]
 categories = ["science::robotics", "embedded", "hardware-support"]
 
+[[test]]
+name = "env_scrub"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = true
