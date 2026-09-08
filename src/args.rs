@@ -1,7 +1,7 @@
 // Copyright 2025 Au-Zone Technologies Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 use zenoh::config::{Config, WhatAmI};
@@ -77,6 +77,46 @@ pub struct Args {
     no_multicast_scouting: bool,
 }
 
+/// Environment variables where an empty value is meaningful and must be preserved
+/// (i.e. the argument has a non-empty default but "" is a documented "disable" sentinel).
+///
+/// The IMU service has no such variables: `CONNECT` and `LISTEN` have no
+/// default, so scrubbing them to "unset" is exactly the intended meaning.
+pub const KEEP: &[&str] = &[];
+
+/// Names of this program's env-bound arguments whose value, as reported by
+/// `var`, is present but empty and not listed in `keep`.
+///
+/// Pure: the environment is only read through `var`, so this can be unit
+/// tested with a fake lookup and no process-wide mutation.
+pub fn empty_env_vars<C: CommandFactory>(
+    keep: &[&str],
+    var: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    C::command()
+        .get_arguments()
+        .filter_map(|arg| arg.get_env().map(|e| e.to_string_lossy().into_owned()))
+        .filter(|name| !keep.contains(&name.as_str()))
+        .filter(|name| var(name).is_some_and(|v| v.is_empty()))
+        .collect()
+}
+
+/// Treat an empty environment variable as unset, so clap's declared
+/// `default_value` applies instead of failing to parse.
+///
+/// Only variables bound to this program's own arguments are considered;
+/// unrelated process environment is left alone. `keep` names variables
+/// where an empty value is meaningful and must be preserved.
+///
+/// # Safety
+/// Must be called before any thread is spawned. Mutating the process
+/// environment is not thread-safe.
+pub unsafe fn scrub_empty_env<C: CommandFactory>(keep: &[&str]) {
+    for name in empty_env_vars::<C>(keep, |name| std::env::var(name).ok()) {
+        std::env::remove_var(&name);
+    }
+}
+
 /// System hostname used as the Zenoh session namespace.
 ///
 /// Empty or `/`-containing hostnames would create unintended sub-keys, so we
@@ -141,6 +181,89 @@ impl From<Args> for Config {
 mod tests {
     use super::*;
     use clap::Parser;
+    use std::collections::HashMap;
+
+    /// Env-bound arguments with a non-empty default where we have consciously decided
+    /// that an empty value is NOT meaningful (so scrubbing to the default is correct).
+    const SCRUB_REVIEWED: &[&str] = &["TIMEOUT", "RUST_LOG", "MODE"];
+
+    #[test]
+    fn every_env_arg_is_either_scrubbable_or_explicitly_kept() {
+        for arg in Args::command().get_arguments() {
+            let Some(env) = arg.get_env() else { continue };
+            let name = env.to_string_lossy().into_owned();
+            let has_nonempty_default = arg
+                .get_default_values()
+                .first()
+                .is_some_and(|d| !d.is_empty());
+            if has_nonempty_default && !KEEP.contains(&name.as_str()) {
+                assert!(
+                    SCRUB_REVIEWED.contains(&name.as_str()),
+                    "{name} has a non-empty default; decide whether empty is meaningful \
+                     and add it to KEEP or SCRUB_REVIEWED"
+                );
+            }
+        }
+    }
+
+    /// Fake environment lookup so the decision logic is tested without
+    /// touching the process environment.
+    fn lookup(env: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |name| map.get(name).cloned()
+    }
+
+    #[test]
+    fn empty_env_var_is_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[("TIMEOUT", "")]));
+        assert_eq!(found, ["TIMEOUT"]);
+    }
+
+    #[test]
+    fn non_empty_env_var_is_not_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[("TIMEOUT", "200")]));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn unset_env_var_is_not_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[]));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn kept_env_var_is_not_listed_even_when_empty() {
+        let found = empty_env_vars::<Args>(&["TIMEOUT"], lookup(&[("TIMEOUT", ""), ("MODE", "")]));
+        assert_eq!(found, ["MODE"]);
+    }
+
+    #[test]
+    fn unbound_env_var_is_never_listed() {
+        let found = empty_env_vars::<Args>(KEEP, lookup(&[("UNRELATED_EMPTY_VAR", "")]));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn all_empty_env_bound_vars_are_listed() {
+        let mut found = empty_env_vars::<Args>(
+            KEEP,
+            lookup(&[
+                ("TIMEOUT", ""),
+                ("RUST_LOG", ""),
+                ("MODE", ""),
+                ("NO_MULTICAST_SCOUTING", ""),
+                ("TRACY", "1"),
+            ]),
+        );
+        found.sort();
+        assert_eq!(
+            found,
+            ["MODE", "NO_MULTICAST_SCOUTING", "RUST_LOG", "TIMEOUT"]
+        );
+    }
 
     #[test]
     fn zenoh_config_sets_namespace() {

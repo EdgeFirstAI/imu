@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-09-07
+
+Patch release for EDGEAI-1094. Argument parsing only; no wire-format or
+configuration-key changes from 3.3.0.
+
+### Fixed
+
+- Empty environment variables in `/etc/default/imu` (`KEY=""`) are now treated
+  as unset so the documented default applies instead of failing to start with
+  a clap parse error (EDGEAI-1094).
+
 ## [3.3.0] - 2026-09-01
 
 Requires bno08x-rs 3.0.0, which fixes the SPI transport defects behind
@@ -192,7 +203,8 @@ roughly 25 restarts per ten minutes to none.
 - Rotation vector update rate changed to 33ms
 - Default message timeout set to 165ms
 
-[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.3.1...HEAD
+[3.3.1]: https://github.com/EdgeFirstAI/imu/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/EdgeFirstAI/imu/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/EdgeFirstAI/imu/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/EdgeFirstAI/imu/compare/v3.0.5...v3.1.0

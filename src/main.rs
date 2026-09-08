@@ -5,7 +5,7 @@ mod args;
 mod driver;
 mod publisher;
 
-use args::Args;
+use args::{scrub_empty_env, Args, KEEP};
 use bno08x_rs::{
     interface::{
         gpio::{GpiodIn, GpiodOut},
@@ -109,6 +109,10 @@ const MAX_CONSECUTIVE_PUBLISH_FAILURES: u32 = 10;
 const IDLE_PARK_TIMEOUT: Duration = Duration::from_millis(50);
 
 fn main() {
+    // SAFETY: single-threaded here; runs before any thread is spawned and
+    // before clap reads the environment (EDGEAI-1094).
+    unsafe { scrub_empty_env::<Args>(KEEP) };
+
     // Install signal handlers for graceful shutdown (required for coverage instrumentation)
     install_signal_handlers();
 
