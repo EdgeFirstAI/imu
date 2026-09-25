@@ -285,8 +285,11 @@ pub fn write_sample(
 /// NTP64 stores fractions of 2^-32 s, so a decoder may recover `stamp` up to
 /// a nanosecond away from the original value.
 pub fn sample_timestamp(stamp: Time, id: TimestampId) -> Timestamp {
-    let secs = u64::try_from(stamp.sec).unwrap_or(0);
-    Timestamp::new(NTP64::from(Duration::new(secs, stamp.nanosec)), id)
+    let since_epoch = match u64::try_from(stamp.sec) {
+        Ok(secs) => Duration::new(secs, stamp.nanosec),
+        Err(_) => Duration::ZERO,
+    };
+    Timestamp::new(NTP64::from(since_epoch), id)
 }
 
 /// Shared handle to the queue used by the sampling thread.
@@ -452,13 +455,9 @@ mod tests {
 
     #[test]
     fn sample_timestamp_clamps_a_negative_stamp_to_the_epoch() {
-        let ts = sample_timestamp(
-            Time {
-                sec: -1,
-                nanosec: 0,
-            },
-            TimestampId::rand(),
-        );
-        assert_eq!(ts.get_time().as_nanos(), 0);
+        for nanosec in [0, 1, 999_999_999] {
+            let ts = sample_timestamp(Time { sec: -1, nanosec }, TimestampId::rand());
+            assert_eq!(ts.get_time().as_nanos(), 0, "-1 s + {nanosec} ns");
+        }
     }
 }
