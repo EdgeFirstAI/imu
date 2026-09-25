@@ -18,7 +18,7 @@ use clap::Parser;
 use driver::Driver;
 use edgefirst_schemas::{builtin_interfaces, geometry_msgs};
 use log::{debug, error, info, trace, warn};
-use publisher::{write_sample, BufferPool, ImuSample, SampleQueue, SharedQueue};
+use publisher::{sample_timestamp, write_sample, BufferPool, ImuSample, SampleQueue, SharedQueue};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -191,6 +191,7 @@ fn publish_loop(args: &Args, session: Session, queue: SharedQueue, stop: Arc<Ato
     // Encoding holds its schema in an Arc-backed ZSlice. Setting it on the
     // publisher instead would require zenoh's internal builder trait.
     let encoding = Encoding::APPLICATION_CDR.with_schema("sensor_msgs/msg/Imu");
+    let timestamp_id = session.zid().into();
     let mut pool = BufferPool::new(PUBLISH_BUFFERS);
     let mut consecutive_failures: u32 = 0;
     queue.set_consumer(std::thread::current());
@@ -242,10 +243,12 @@ fn publish_loop(args: &Args, session: Session, queue: SharedQueue, stop: Arc<Ato
             }
             let payload = buf.freeze();
 
+            // The sample is stamped with its acquisition time, taken in the
+            // sensor callback, never with the time it left the queue.
             let result = publisher
                 .put(ZBytes::from(payload.clone()))
                 .encoding(encoding.clone())
-                .timestamp(session.new_timestamp())
+                .timestamp(sample_timestamp(sample.stamp, timestamp_id))
                 .wait();
 
             // The buffer goes back to the pool either way. A failed put may

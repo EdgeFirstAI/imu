@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-09-25
+
+Implements the IMU section of the middleware timestamp contract (EDGEAI-1943, EDGEAI-1937). No configuration-key changes from 3.3.1.
+
+### Changed
+
+- The Zenoh sample timestamp on `imu` now denotes the same instant as `header.stamp`, the acquisition time taken when the rotation vector report is read. It was previously a second wall-clock read on the publish thread, after the sample queue, so it could lag the header stamp by the queueing delay. MCAP `publish_time` written by the recorder now equals `header.stamp` (EDGEAI-1943).
+
 ## [3.3.1] - 2026-09-07
 
 Patch release for EDGEAI-1094. Argument parsing only; no wire-format or
@@ -203,7 +211,8 @@ roughly 25 restarts per ten minutes to none.
 - Rotation vector update rate changed to 33ms
 - Default message timeout set to 165ms
 
-[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.3.1...HEAD
+[Unreleased]: https://github.com/EdgeFirstAI/imu/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/EdgeFirstAI/imu/compare/v3.3.1...v3.4.0
 [3.3.1]: https://github.com/EdgeFirstAI/imu/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/EdgeFirstAI/imu/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/EdgeFirstAI/imu/compare/v3.1.0...v3.2.0

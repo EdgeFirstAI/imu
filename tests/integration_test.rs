@@ -26,6 +26,11 @@ use zenoh::Wait;
 /// BNO08x rotation vector typically reports at ~100Hz.
 const MIN_EXPECTED_RATE_HZ: f64 = 50.0;
 
+/// Largest difference allowed between the Zenoh sample timestamp and the CDR
+/// `header.stamp`. Both denote the same instant, but NTP64 stores fractions
+/// of 2^-32 s, so a decoder may land a nanosecond away from the original.
+const TIMESTAMP_TOLERANCE: Duration = Duration::from_nanos(1);
+
 /// Duration to collect IMU messages before analyzing.
 const COLLECTION_DURATION: Duration = Duration::from_secs(5);
 
@@ -115,8 +120,9 @@ fn stop_imu_service(mut child: Child) {
 /// 2. Subscribes to the IMU topic
 /// 3. Collects messages for COLLECTION_DURATION
 /// 4. Verifies messages are valid IMU messages
-/// 5. Checks the publishing rate meets minimum threshold
-/// 6. Gracefully stops the IMU service
+/// 5. Checks each Zenoh sample timestamp equals the message `header.stamp`
+/// 6. Checks the publishing rate meets minimum threshold
+/// 7. Gracefully stops the IMU service
 #[test]
 #[ignore] // Requires hardware - run on raivin runner
 fn test_imu_publishing() {
@@ -134,6 +140,8 @@ fn test_imu_publishing() {
     // Subscribe to IMU topic
     let message_count = Arc::new(AtomicU64::new(0));
     let message_count_clone = message_count.clone();
+    let timestamp_mismatches = Arc::new(AtomicU64::new(0));
+    let timestamp_mismatches_clone = timestamp_mismatches.clone();
 
     let subscriber = session
         .declare_subscriber(imu_wire_topic())
@@ -161,6 +169,26 @@ fn test_imu_publishing() {
                         now_secs.abs_diff(stamp_secs) < 5,
                         "IMU timestamp {stamp_secs}s not close to wall time {now_secs}s"
                     );
+
+                    let stamp = Duration::new(
+                        u64::try_from(imu.stamp().sec).expect("IMU stamp.sec is negative"),
+                        imu.stamp().nanosec,
+                    );
+                    match sample.timestamp() {
+                        Some(ts) => {
+                            let zenoh = ts.get_time().to_duration();
+                            if stamp.abs_diff(zenoh) > TIMESTAMP_TOLERANCE {
+                                eprintln!(
+                                    "Zenoh timestamp {zenoh:?} differs from header.stamp {stamp:?}"
+                                );
+                                timestamp_mismatches_clone.fetch_add(1, Ordering::SeqCst);
+                            }
+                        }
+                        None => {
+                            eprintln!("IMU sample has no Zenoh timestamp");
+                            timestamp_mismatches_clone.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
 
                     if (mag - 1.0).abs() < 0.1 {
                         message_count_clone.fetch_add(1, Ordering::SeqCst);
@@ -193,6 +221,11 @@ fn test_imu_publishing() {
 
     // Assertions
     assert!(count > 0, "No IMU messages received!");
+    let mismatches = timestamp_mismatches.load(Ordering::SeqCst);
+    assert_eq!(
+        mismatches, 0,
+        "{mismatches} sample(s) had a Zenoh timestamp not equal to header.stamp"
+    );
     assert!(
         rate >= MIN_EXPECTED_RATE_HZ,
         "IMU rate {:.1} Hz is below minimum {:.1} Hz",

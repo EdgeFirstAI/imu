@@ -91,12 +91,12 @@ Three source files in `src/`:
 
 ### Timestamp Convention
 
-Header stamps in published messages must use `CLOCK_REALTIME` (wall-clock time), following the ROS2 convention where `rclcpp::Node::now()` returns `SYSTEM_TIME` by default. This ensures timestamps are:
-- Correlatable with system logs and external systems
-- Compatible with rosbag recording
-- Human-readable
+Published timestamps follow the EdgeFirst middleware timestamp contract (EDGEAI-1937, manual page Perception > Clock Synchronization and Timestamps):
 
-`CLOCK_MONOTONIC` should only be used for internal duration/interval measurements (e.g., timeout tracking). For sensors that provide monotonic timestamps (e.g., V4L2), convert to wall-clock via a cached `REALTIME - MONOTONIC` offset.
+- `header.stamp` is the acquisition instant as Unix time from `CLOCK_REALTIME`. For `imu` that is host time when the rotation vector report is read, taken in the sensor callback before the sample is queued.
+- The Zenoh sample timestamp denotes the same instant as `header.stamp` on every `put()`; never attach `session.new_timestamp()`. NTP64 stores fractions of 2^-32 s, so tests compare the two with a tolerance of a nanosecond, not with exact equality.
+- The service must not depend on time synchronization and must follow a clock step without restarting. Read the wall clock per sample; never cache a `REALTIME - MONOTONIC` offset.
+- `CLOCK_MONOTONIC` (`Instant`) is used only for durations such as the sample watchdog.
 
 ## CI/CD
 
