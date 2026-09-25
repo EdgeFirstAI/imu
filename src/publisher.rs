@@ -40,8 +40,10 @@ use std::{
         Arc, OnceLock,
     },
     thread::Thread,
+    time::Duration,
 };
 use tracing::debug;
+use zenoh::time::{Timestamp, TimestampId, NTP64};
 
 /// Covariance reported for every field. A leading -1 is the ROS convention
 /// for "this quantity is not estimated".
@@ -276,6 +278,20 @@ pub fn write_sample(
     Ok(())
 }
 
+/// Zenoh sample timestamp denoting the same instant as `stamp`.
+///
+/// The sample timestamp carries the acquisition time rather than the publish
+/// time, so the recorder's MCAP `publish_time` equals the CDR `header.stamp`.
+/// NTP64 stores fractions of 2^-32 s, so a decoder may recover `stamp` up to
+/// a nanosecond away from the original value.
+pub fn sample_timestamp(stamp: Time, id: TimestampId) -> Timestamp {
+    let since_epoch = match u64::try_from(stamp.sec) {
+        Ok(secs) => Duration::new(secs, stamp.nanosec),
+        Err(_) => Duration::ZERO,
+    };
+    Timestamp::new(NTP64::from(since_epoch), id)
+}
+
 /// Shared handle to the queue used by the sampling thread.
 pub type SharedQueue = Arc<SampleQueue>;
 
@@ -413,5 +429,35 @@ mod tests {
         let decoded = Imu::from_cdr(buf.as_ref()).expect("decode");
         assert_eq!(decoded.orientation().x, 9.0);
         assert_eq!(decoded.stamp().sec, 9);
+    }
+
+    #[test]
+    fn sample_timestamp_denotes_the_header_stamp() {
+        let id = TimestampId::rand();
+        for (sec, nanosec) in [
+            (0, 0),
+            (0, 1),
+            (1_790_355_803, 123_456_789),
+            (1_790_355_803, 999_999_999),
+            (i32::MAX, 999_999_999),
+        ] {
+            let ts = sample_timestamp(Time { sec, nanosec }, id);
+            let expected = Duration::new(sec as u64, nanosec);
+            let decoded = ts.get_time().to_duration();
+            let error = expected.abs_diff(decoded);
+            assert!(
+                error <= Duration::from_nanos(1),
+                "{sec}.{nanosec:09} decoded as {decoded:?}"
+            );
+            assert_eq!(*ts.get_id(), id);
+        }
+    }
+
+    #[test]
+    fn sample_timestamp_clamps_a_negative_stamp_to_the_epoch() {
+        for nanosec in [0, 1, 999_999_999] {
+            let ts = sample_timestamp(Time { sec: -1, nanosec }, TimestampId::rand());
+            assert_eq!(ts.get_time().as_nanos(), 0, "-1 s + {nanosec} ns");
+        }
     }
 }

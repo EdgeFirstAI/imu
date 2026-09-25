@@ -40,6 +40,14 @@ The IMU service operates as a standalone binary with the following responsibilit
    - Zenoh topic publishing
    - Configurable topic names
 
+### Timestamps
+
+The service follows the EdgeFirst middleware timestamp contract (manual page Perception > Clock Synchronization and Timestamps):
+
+1. The sensor callback stamps each sample with `CLOCK_REALTIME` when the rotation vector report is read. This is the acquisition instant for the `imu` topic.
+2. The publish thread writes that value into `header.stamp` and attaches the same instant as the Zenoh sample timestamp, so the recorder's MCAP `publish_time` equals `header.stamp` regardless of how long the sample waited in the queue.
+3. The wall clock is read per sample, so stamps follow an NTP or GNSS clock step immediately without a restart. The watchdog uses `Instant` and is unaffected by steps.
+
 ### ROS 2 Year 2038 Limit
 
 The ROS 2 `builtin_interfaces/msg/Time` message uses `int32` for the `sec` field, which overflows on 2038-01-19T03:14:07Z.
